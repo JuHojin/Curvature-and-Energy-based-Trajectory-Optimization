@@ -4,6 +4,6 @@ build_isolated/
 devel_isolated/
 src/cartographer/
 src/cartographer_ros/
-src/.rosintall
-src/.rosintall.bak
+src/.rosinstall
+src/.rosinstall.bak
 .catkin_workspace
