@@ -1,0 +1,15 @@
+footprint: [[-0.1, -0.2],
+            [ 0.5, -0.2],
+            [ 0.6,  0.0],
+            [ 0.5,  0.2],
+            [-0.1,  0.2]]
+
+observation_sources: scan
+scan:
+  sensor_frame: car_1_laser
+  data_type: LaserScan
+  topic: /car_1/scan
+  marking: true
+  clearing: true
+  obstacle_range: 10.0
+  raytrace_range: 10.5

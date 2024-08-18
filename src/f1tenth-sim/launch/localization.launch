@@ -1,0 +1,32 @@
+<launch>
+    <param name="use_sim_time" value="true"/>
+
+    <arg name="map_filename" default="race_track_obs.yaml"/>
+    <arg name="map_directory" default="/home/acss/catkin_ws/src/f1tenth-sim/maps/"/>
+    <arg name="full_map_path" value="$(arg map_directory)$(arg map_filename)"/>
+        
+    <!-- Map Server -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(arg full_map_path)" output="screen">
+        <param name="frame_id" value="map"/>
+    </node>
+    
+    <!-- AMCL -->
+    <node name="amcl" pkg="amcl" type="amcl">
+        <param name="odom_frame_id" value="odom"/>
+        <param name="base_frame_id" value="base_link"/>
+        <param name="global_frame_id" value="map"/>
+        <param name="min_particles" value="100"/> <!-- Reduced number for potentially faster updates -->
+        <param name="max_particles" value="2000"/> <!-- Reduced number for potentially faster updates -->
+        <param name="update_min_d" value="0.01"/> <!-- Smaller distance threshold for more frequent updates -->
+        <param name="update_min_a" value="0.05"/> <!-- Smaller angle threshold for more frequent updates -->
+        <param name="initial_pose_x" value="0.0"/>
+        <param name="initial_pose_y" value="0.0"/>
+        <param name="initial_pose_a" value="0.0"/>
+        <remap from="scan" to="/car_1/scan"/>
+    </node>
+
+    <!-- Cost map -->
+    <!-- <node name="costmap_node" pkg="costmap_2d" type="costmap_2d_node">
+        <rosparam file="$(find f1tenth-sim)/config/costmap_params.yaml" command="load" ns="costmap" />
+    </node> -->
+</launch>

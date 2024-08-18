@@ -1,0 +1,5 @@
+<library path="devel_isolated/my_global_planner/lib/libmy_global_planner">
+    <class name="my_global_planner/MyGlobalPlanner" type="my_global_planner::MyGlobalPlanner" base_class_type="nav_core::BaseGlobalPlanner">
+      <description>This is my global planner plugin.</description>
+    </class>
+</library>
