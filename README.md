@@ -112,7 +112,14 @@ sudo cmake --build . --target install
 This will compile the OSQP library in the Release configuration and install it to the default system location.
 
 ## Usage
-Verify the vehicle model and map spawn correctly in Gazebo simulation.
+
+**CAUTION:** Please ensure to restart your terminal and use CMake version 3.10.2 before proceeding. Directories generated in previous builds (`devel_isolated/`, `build_isolated/`, `install_isolated/`, `devel/`, `build/`, `install/`) may affect the build process. To clean up these directories, run the following commands in your terminal:
+```bash
+cd ~/catkin_ws
+rm -r devel_isolated/ build_isolated/ install_isolated/ devel/ build/ install/
+```
+
+Finally, Build the project using ninja and verify the vehicle model and map spawn correctly in Gazebo simulation.
 
 ```bash
 cd ~/catkin_ws
@@ -120,6 +127,15 @@ catkin_make_isolated --use-ninja
 source ~/catkin_ws/devel_isolated/setup.bash
 roslaunch f1tenth-sim simulator.launch
 ```
+
+**Optional:** You can add the above sourcing command to your ~/.bashrc file to automatically set up the environment every time a new shell is opened:
+
+```bash
+echo "source ~/catkin_ws/devel_isolated/setup.bash" >> ~/.bashrc
+```
+
+### Control
+TBD
 
 #### Troubleshooting: Gazebo Connection Error with Ignition Fuel
 When running Gazebo, you might encounter an SSL certification error with the Ignition Fuel service:
@@ -138,7 +154,13 @@ You need to update the Ignition Fuel URL in your configuration file. Open the co
 vim ~/.ignition/fuel/config.yaml
 ```
 
-Then, substitute ignitionfuel with ignitionrobotics in the configuration. This adjustment should correct the connection issue, allowing Gazebo to properly communicate with the Ignition services.
+Update the URL to the following:
+
+```bash
+url: https://api.ignitionrobotics.org
+```
+
+This adjustment should correct the connection issue, allowing Gazebo to properly communicate with the Ignition services.
 
 #### Troubleshooting: Gazebo Map Spawn Issue
 If you are experiencing issues with spawning maps in Gazebo, the model path might not be properly set. To fix this, you need to update your `GAZEBO_MODEL_PATH` environment variable:
@@ -154,5 +176,3 @@ For example, if your world files are located in `~/catkin_ws/src/f1tenth-sim/wor
 echo 'export GAZEBO_MODEL_PATH=~/catkin_ws/src/f1tenth-sim/world/:$GAZEBO_MODEL_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
-
-This setup ensures that Gazebo can locate and load the specified maps, resolving issues related to map spawning.
