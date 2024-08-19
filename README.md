@@ -13,11 +13,39 @@ You can download and install Ubuntu 18.04 from [here](https://releases.ubuntu.co
 You need to clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/takahashi-seiryu/Vehicle-Trajectory-Planning.git
+cd ~
+git clone https://github.com/takahashi-seiryu/Vehicle-Trajectory-Planning-Using-Gazebo.git
+```
+
+**Optional:** Then rename the workspace to `catkin_ws`. You can choose another name, but we will refer to the workspace as `catkin_ws` throughout the rest of this README.
+
+```bash
+mv Vehicle-Trajectory-Planning-Using-Gazebo catkin_ws
 ```
 
 ### ROS1 Melodic and Gazebo
-Install ROS1 Melodic by following the steps provided [here](https://wiki.ros.org/melodic/Installation/Ubuntu).
+Install ROS1 Melodic `ros-melodic-desktop` by following the steps provided [here](https://wiki.ros.org/melodic/Installation/Ubuntu).
+
+And, install followings for the additional dependencies:
+
+```bash
+sudo apt-get update
+sudo apt-get install ros-melodic-tf2-geometry-msgs ros-melodic-ackermann-msgs ros-melodic-joy ros-melodic-map-server ros-melodic-teleop-twist-keyboard ros-melodic-navigation ros-melodic-teb-local-planner* ros-melodic-ros-control ros-melodic-ros-controllers ros-melodic-gazebo-ros-control ros-melodic-ackermann-msgs ros-melodic-serial qt4-default ros-melodic-effort-controllers
+```
+
+Also, we will use ninja for faster builds.
+```bash
+sudo apt-get install ninja-build
+```
+
+Verify the vehicle model and map spawn correctly in Gazebo simulation.
+
+```bash
+cd ~/catkin_ws
+catkin_make_isolated --use-ninja
+source ~catkin_ws/devel_isolated/setup.bash
+roslaunch f1tenth-sim simulator.launch
+```
 
 #### Troubleshooting: Gazebo Connection Error with Ignition Fuel
 When running Gazebo, you might encounter an SSL certification error with the Ignition Fuel service:
@@ -27,10 +55,10 @@ When running Gazebo, you might encounter an SSL certification error with the Ign
 libcurl: (51) SSL: no alternative certificate subject name matches target host name 'api.ignitionfuel.org'
 ```
 
-**Error Description:** This error indicates that the target host name address is incorrect.
+This error indicates that the target host name address is incorrect.
 
 **Solution:**
-To resolve this issue, you need to update the Ignition Fuel URL in your configuration file. Open the config file using vim:
+You need to update the Ignition Fuel URL in your configuration file. Open the config file using vim:
 
 ```bash
 $ vim ~/.ignition/fuel/config.yaml
@@ -73,8 +101,11 @@ cartographer: [libabsl-dev] defined as "not available" for OS version [bionic]
 
 ### OSQP C++ Library
 #### Prerequisites: Upgrade CMake to Version 3.18.5
-Ubuntu 18.04 ships with CMake version 3.10.2 by default, which is not compatible with the OSQP library. Follow these steps to upgrade CMake to version 3.18.5:
+Ubuntu 18.04 ships with CMake version 3.10.2 by default, which is not compatible with the OSQP library. we'll add CMake version 3.18.5 to use specifically for building and installing OSQP, while continuing to use CMake 3.10.2 for everything else. This will allow you to switch between the two versions as needed.
+
+First, download and install CMake 3.18.5:
 ```bash
+cd ~/Downloads
 wget https://github.com/Kitware/CMake/releases/download/v3.18.5/cmake-3.18.5.tar.gz
 tar -xzvf cmake-3.18.5.tar.gz
 cd cmake-3.18.5
@@ -83,39 +114,32 @@ cd cmake-3.18.5
 Then build and install:
 
 ```bash
-./bootstrap
+./bootstrap --prefix=/usr/local/cmake-3.18.5
 make
 sudo make install
 ```
 
-Verify the installation by checking the version of CMake:
+After installation, if you check the CMake version, it will still show 3.10.2:
+
 ```bash
 cmake --version
 ```
 
-After upgrading to CMake 3.18.5, there might be issues with the system recognizing the new version due to the presence of the older version (3.10.2). Directly modify system links to point to the new CMake installed in `/usr/local/bin`. First, find and remove existing links.
+If you need to use CMake 3.18.5, for example, when building and installing OSQP, you can temporarily activate it with the following command. Note that this change is temporary and will revert to CMake 3.10.2 when you close the terminal:
 
 ```bash
-which cmake
-sudo rm /usr/bin/cmake
+export PATH=/usr/local/cmake-3.18.5/bin:$PATH
 ```
 
-Then create a new symbolic link
+We will only use this version (3.18.5) when building and installing OSQP.
 
-```bash
-sudo ln -s /usr/local/bin/cmake /usr/bin/cmake
-```
-
-Verify the installation by checking the version of CMake again. You can recognize the new CMake version 3.18.5:
-```bash
-cmake --version
-```
 
 #### Install OSQP Library
 
 OSQP's C++ interface is provided as source code. Clone the OSQP repository using the following command:
 
 ```bash
+cd ~
 git clone --recursive https://github.com/osqp/osqp
 ```
 
@@ -135,4 +159,4 @@ cmake --build . --config Release
 sudo cmake --build . --target install
 ```
 
-This will compile the OSQP library in the **Release** configuration and install it to the default system location.
+This will compile the OSQP library in the Release configuration and install it to the default system location.
