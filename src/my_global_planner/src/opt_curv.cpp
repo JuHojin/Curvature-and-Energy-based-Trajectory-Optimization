@@ -42,7 +42,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vec
     return new_path;
 }
 
-Eigen::MatrixXd updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixXd& A) {
+void updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixXd& A) {
     int numPoints = path.size();
     int numSplines = numPoints - 1;
     Eigen::VectorXd pointDist(numSplines);
@@ -57,7 +57,6 @@ Eigen::MatrixXd updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eig
         scaling(i) = pointDist(i) / pointDist(i + 1);
     }
 
-    // Initialize the system matrix with zeros
     A = Eigen::MatrixXd::Zero(numSplines * 4, numSplines * 4);
 
     // Base matrix for constraints, repeated in A
@@ -79,7 +78,7 @@ Eigen::MatrixXd updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eig
             A(j + 3, j + 6) *= std::pow(scaling(i), 2);
         } else {
             // End conditions for the spline (ensure the spline ends smoothly at the last point)
-            A.block(j, j, 2, 4) = baseA.topRows(2);
+            A.block(j, j, 2, 4) = baseA.block(0, 0, 2, 4);
         }
     }
 
@@ -229,10 +228,11 @@ void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>
         const auto& point = path[i];
         const auto& normal = normal_vectors[i];
 
-        double left_dx = -normal(1);  // Rotate 90 degrees to the left
-        double left_dy = normal(0);
-        double right_dx = normal(1);  // Rotate 90 degrees to the right
-        double right_dy = -normal(0);
+        // The normal vector is defined in the left
+        double left_dx = normal.x();
+        double left_dy = normal.y();
+        double right_dx = -left_dx;
+        double right_dy = -left_dy;
 
         boundaries.left_bnd.distances[i] = checkBoundary(point, left_dx, left_dy);
         boundaries.right_bnd.distances[i] = checkBoundary(point, right_dx, right_dy);
@@ -245,10 +245,10 @@ void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>
         const auto& point = path[i];
         const auto& normal = normal_vectors[i];
 
-        double left_dx = -normal(1);
-        double left_dy = normal(0);
-        double right_dx = normal(1);
-        double right_dy = -normal(0);
+        double left_dx = normal.x();
+        double left_dy = normal.y();
+        double right_dx = -left_dx;
+        double right_dy = -left_dy;
 
         boundaries.left_bnd.points[i] = createBoundaryPoint(point, left_dx, left_dy, boundaries.left_bnd.distances[i]);
         boundaries.right_bnd.points[i] = createBoundaryPoint(point, right_dx, right_dy, boundaries.right_bnd.distances[i]);
@@ -256,23 +256,21 @@ void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>
 }
 
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
-    int x = point(0);
-    int y = point(1);
+    int x = point.x();
+    int y = point.y();
     
     for (int d = 0; d < Constant::DEV_MAX; ++d) {
         int nx = x + std::round(dx * d);
         int ny = y + std::round(dy * d);
         
         if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
-            ROS_ERROR("Coordinates (%d, %d) are out of costmap bounds.", nx, ny);
-            return d; // Return the distance at which an obstacle is encountered or boundary is reached
+            return d; // Return the distance at which boundary is reached
         }
 
         if (costmap->getCost(nx, ny) >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
             return d; // Return the distance at which an obstacle is encountered
         }
-    }
-
+    }// Return the distance at which an obstacle is encountered or boundary is reached
     return Constant::DEV_MAX; // Return the maximum distance if no obstacles are encountered
 }
 
@@ -300,7 +298,7 @@ void constrainDeviationChange(std::vector<float>& dev_list) {
 }
 
 Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, double dy, double distance) {
-    return Eigen::Vector2d(point(0) + dx * distance, point(1) + dy * distance);
+    return Eigen::Vector2d(point.x() + dx * distance, point.y() + dy * distance);
 }
 
 // Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
@@ -347,15 +345,15 @@ Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, dou
 //         if (i < num_points - 1) {
 //             const auto& normal_next = normal_vectors[i + 1];
 
-//             M_x(j, i) = normal(0);
+//             M_x(j, i) = normal.x();
 //             M_x(j + 1, i + 1) = normal_next(0);
-//             M_y(j, i) = normal(1);
+//             M_y(j, i) = normal.y();
 //             M_y(j + 1, i + 1) = normal_next(1);
 //         } else {
-//             M_x(j, i) = normal(0);
+//             M_x(j, i) = normal.x();
 //             M_x(j + 1, 0) = normal_vectors[0](0);
 
-//             M_y(j, i) = normal(1);
+//             M_y(j, i) = normal.y();
 //             M_y(j + 1, 0) = normal_vectors[0](1);
 //         }
 //     }

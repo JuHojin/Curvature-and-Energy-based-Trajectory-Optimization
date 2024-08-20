@@ -16,7 +16,7 @@ namespace my_global_planner {
 
 std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vector2d>& path, const size_t max_iter);
 
-Eigen::MatrixXd updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixXd& A);
+void updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixXd& A);
 void updateNormalVectors(const std::vector<Eigen::Vector2d>& path, std::vector<Eigen::Vector2d>& normal_vectors);
 
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle);

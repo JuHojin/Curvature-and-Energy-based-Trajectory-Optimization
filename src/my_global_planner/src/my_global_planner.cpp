@@ -92,7 +92,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
     // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
     std::vector<Eigen::Vector2d> uniform_path_2d = convertPoseStampedToVector2d(uniform_plan);
-    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path_2d, 1);
+    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path_2d, 3);
 
     return a_star_success;
 }
