@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: f1tenth-sim
+Description: Description of f1tenth-sim
+Version: 0.2.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: gazebo_ros geometry_msgs nav_msgs rospy sensor_msgs std_msgs tf message_runtime

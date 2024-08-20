@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/acss/catkin_ws/src/f1tenth-sim/build/devel/setup.sh

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.10.2)
 project(my_global_planner)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
@@ -14,9 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
 )
 
+find_package(osqp REQUIRED)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -126,6 +127,7 @@ add_library(${PROJECT_NAME}
   src/my_global_planner.cpp
   src/a_star.cpp
   src/opt_curv.cpp
+  src/path_func.cpp
 )
 
 ## Add cmake target dependencies of the library
@@ -151,6 +153,7 @@ add_library(${PROJECT_NAME}
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
+  osqp::osqp
 )
 
 #############
