@@ -21,13 +21,11 @@ void updateNormalVectors(const std::vector<Eigen::Vector2d>& path, std::vector<E
 
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle);
 double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);
-void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, 
-                                    std::vector<double>& curvature,
-                                    double& curvature_square_sum,
-                                    double& max_curvature);
+void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, std::vector<double>& curvature, double& curvature_square_sum, double& max_curvature);
 
 Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
-                                     const std::vector<double>& dev_bnd,
+                                     std::vector<double>& left_dev_bnd,
+                                     std::vector<double>& right_dev_bnd,
                                      const std::vector<Eigen::Vector2d>& normal_vectors,
                                      const Eigen::MatrixXd& A,
                                      double curvature_bnd,
@@ -35,7 +33,7 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
 
 // Boundaries
 void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors);
-void constrainDeviationChange(std::vector<float>& dev_list);
+void constrainDeviationChange(std::vector<double>& dev_list);
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy);
 Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, double dy, double distance);
 

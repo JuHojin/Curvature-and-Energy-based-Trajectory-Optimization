@@ -31,12 +31,16 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vec
 
         // Boundaries
         updateBoundaries(Boundaries, path, normal_vectors);
+        // 
         std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
         std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
         nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
         nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
         publishPath(plan_publisher_bnd_L, left_bnd_world);
         publishPath(plan_publisher_bnd_R, right_bnd_world);
+
+        Eigen::VectorXd alpha = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances,
+                                                     normal_vectors, A, Constant::CURVATURE_BOUND, 0, 0);
     }
 
     return new_path;
@@ -274,12 +278,12 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
     return Constant::DEV_MAX; // Return the maximum distance if no obstacles are encountered
 }
 
-void constrainDeviationChange(std::vector<float>& dev_list) {
+void constrainDeviationChange(std::vector<double>& dev_list) {
     // Constrain forward direction
-    float dev = dev_list[0];
+    double dev = dev_list[0];
 
     for (int i = 1; i < dev_list.size(); ++i) {
-        float next_dev = dev + Constant::DEV_DOT;
+        double next_dev = dev + Constant::DEV_DOT;
         if (next_dev < dev_list[i]) {
             dev_list[i] = next_dev;
         }
@@ -289,7 +293,7 @@ void constrainDeviationChange(std::vector<float>& dev_list) {
     // Constrain backward direction
     dev = dev_list.back();
     for (int i = dev_list.size() - 2; i >= 0; --i) {
-        float prev_dev = dev + Constant::DEV_DOT;
+        double prev_dev = dev + Constant::DEV_DOT;
         if (prev_dev < dev_list[i]) {
             dev_list[i] = prev_dev;
         }
@@ -301,165 +305,226 @@ Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, dou
     return Eigen::Vector2d(point.x() + dx * distance, point.y() + dy * distance);
 }
 
-// Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
-//                                                     const std::vector<double>& dev_bnd,
-//                                                     const std::vector<Eigen::Vector2d>& normal_vectors,
-//                                                     const Eigen::MatrixXd& A,
-//                                                     double curvature_bnd,
-//                                                     double start_angle, double end_angle) {
-//     std::size_t num_points = path.size();
-//     std::size_t num_splines = num_points - 1;
+Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
+                                                    std::vector<double> left_dev_bnd,
+                                                    std::vector<double> right_dev_bnd,
+                                                    const std::vector<Eigen::Vector2d>& normal_vectors,
+                                                    const Eigen::MatrixXd& A,
+                                                    double curvature_bnd,
+                                                    double start_angle, double end_angle) {
+    std::size_t num_points = path.size();
+    std::size_t num_splines = num_points - 1;
 
-//     // Matrix and vector setups for the optimization problem
-//     Eigen::MatrixXd P, Q, E;
-//     Eigen::VectorXd f, k;
+    // Matrix and vector setups for the optimization problem
+    // 1/2*x.T*H*x + f*x
+    // E*x < k
+    Eigen::MatrixXd H, Q, E;
+    Eigen::VectorXd f, k;
 
-//     // Construct extraction matrices : b component extraction
-//     Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
-//     for (int i = 0; i < num_splines; ++i) {
-//         A_ex_b[i, i * 4 + 1] = 1;
-//     }
-//     A_ex_b.row(num_points - 1).tail(4) << 0, 1, 2, 3;
+    // Construct extraction matrices : b component extraction
+    Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
+        A_ex_b[i, i * 4 + 1] = 1;
+    }
+    A_ex_b.row(num_points - 1).tail(4) << 0, 1, 2, 3;
 
-//     // Construct extraction matrices : c component extraction
-//     Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
-//     for (int i = 0; i < num_splines; ++i) {
-//         A_ex_c(i, i * 4 + 2) = 2;
-//     }
-//     A_ex_c.row(num_points - 1).tail(4) << 0, 0, 2, 6;
+    // Construct extraction matrices : c component extraction
+    Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
+        A_ex_c(i, i * 4 + 2) = 2;
+    }
+    A_ex_c.row(num_points - 1).tail(4) << 0, 0, 2, 6;
 
-//     // Calculate inverse of A matrix
-//     Eigen::MatrixXd A_inv = A.inverse();
+    Eigen::MatrixXd A_inv = A.inverse();
 
-//     // Calculate T_c matrix
-//     Eigen::MatrixXd T_c = A_ex_c * A_inv;
+    Eigen::MatrixXd T_c = A_ex_c * A_inv;
 
-//     // Construct normal vector matrix
-//     Eigen::MatrixXd M_x = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
-//     Eigen::MatrixXd M_y = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
+    // Construct normal vector matrix
+    Eigen::MatrixXd M_x = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
+    Eigen::MatrixXd M_y = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
 
-//     for (int i = 0; i < num_splines; ++i) {
-//         int j = i * 4;
-//         const auto& normal = normal_vectors[i];
+    for (int i = 0; i < num_splines; ++i) {
+        int j = i * 4;
+        const auto& normal = normal_vectors[i];
 
-//         if (i < num_points - 1) {
-//             const auto& normal_next = normal_vectors[i + 1];
+        if (i < num_points - 1) {
+            const auto& normal_next = normal_vectors[i + 1];
 
-//             M_x(j, i) = normal.x();
-//             M_x(j + 1, i + 1) = normal_next(0);
-//             M_y(j, i) = normal.y();
-//             M_y(j + 1, i + 1) = normal_next(1);
-//         } else {
-//             M_x(j, i) = normal.x();
-//             M_x(j + 1, 0) = normal_vectors[0](0);
+            M_x(j, i) = normal.x();
+            M_x(j + 1, i + 1) = normal_next.x();
+            M_y(j, i) = normal.y();
+            M_y(j + 1, i + 1) = normal_next.y();
+        } else {
+            M_x(j, i) = normal.x();
+            M_x(j + 1, 0) = normal_vectors[0].x();
 
-//             M_y(j, i) = normal.y();
-//             M_y(j + 1, 0) = normal_vectors[0](1);
-//         }
-//     }
+            M_y(j, i) = normal.y();
+            M_y(j + 1, 0) = normal_vectors[0].y();
+        }
+    }
 
-//     // Construct reference path matrix
-//     Eigen::VectorXd q_x = Eigen::VectorXd::Zero(num_splines * 4);
-//     Eigen::VectorXd q_y = Eigen::VectorXd::Zero(num_splines * 4);
+    // Construct reference path vector
+    Eigen::VectorXd q_x = Eigen::VectorXd::Zero(num_splines * 4);
+    Eigen::VectorXd q_y = Eigen::VectorXd::Zero(num_splines * 4);
 
-//     for (int i = 0; i < num_splines; ++i) {
-//         int j = i * 4;
-//         const auto& point = path[i];
+    for (int i = 0; i < num_splines; ++i) {
+        int j = i * 4;
+        const auto& point = path[i];
 
-//         if (i < num_points - 1) {
-//             const auto& point_next = path[i + 1];
+        if (i < num_points - 1) {
+            const auto& point_next = path[i + 1];
 
-//             q_x(j) = point(0);
-//             q_x(j + 1) = point_next(0);
+            q_x(j) = point.x();
+            q_x(j + 1) = point_next.x();
 
-//             q_y(j) = point(1);
-//             q_y(j + 1) = point_next(1);
-//         } else {
-//             q_x(j) = point(0);
-//             q_x(j + 1) = path[0](0);
+            q_y(j) = point.y();
+            q_y(j + 1) = point_next.y();
+        } else {
+            q_x(j) = point.x();
+            q_x(j + 1) = path[0].x();
 
-//             q_y(j) = point(1);
-//             q_y(j + 1) = path[0](1);
-//         }
-//     }
+            q_y(j) = point.y();
+            q_y(j + 1) = path[0].y();
+        }
+    }
 
-//     q_x(num_splines * 4 - 2) = std::cos(start_angle);
-//     q_y(num_splines * 4 - 2) = std::sin(start_angle);
-//     q_x(num_splines * 4 - 1) = std::cos(end_angle);
-//     q_y(num_splines * 4 - 1) = std::sin(end_angle);
+    q_x(num_splines * 4 - 2) = std::cos(start_angle);
+    q_y(num_splines * 4 - 2) = std::sin(start_angle);
+    q_x(num_splines * 4 - 1) = std::cos(end_angle);
+    q_y(num_splines * 4 - 1) = std::sin(end_angle);
 
-//     // Calculate derivatives: x', y', x'y'
-//     Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
-//     Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
-//     Eigen::VectorXd x_dot_y_dot = -2 * x_dot.array() * y_dot.array();
+    // Calculate derivatives: x', y', x'y'
+    Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
+    Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
+    Eigen::VectorXd x_dot_y_dot = -2 * x_dot.array() * y_dot.array();
 
-//     // Square of derivatives
-//     Eigen::VectorXd x_dot_sq = x_dot.array().square();
-//     Eigen::VectorXd y_dot_sq = y_dot.array().square();
+    // Square of derivatives
+    Eigen::VectorXd x_dot_sq = x_dot.array().square();
+    Eigen::VectorXd y_dot_sq = y_dot.array().square();
 
-//     // Curvature denominator calculations
-//     Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
-//     Eigen::VectorXd curvatures_den = curv_den.array().inverse();
-//     curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; }); // Check infinity
-//     Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
+    // Curvature denominator calculations
+    Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
+    Eigen::VectorXd curvatures_den = curv_den.array().inverse();
+    curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; }); // Check infinity
+    Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
 
-//     // Objective function formulation
-//     Eigen::MatrixXd P_xx = (curvatures_sq_den.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points)) * (y_dot_sq.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points));
-//     Eigen::MatrixXd P_yy = (curvatures_sq_den.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points)) * (x_dot_sq.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points));
-//     Eigen::MatrixXd P_xy = (curvatures_sq_den.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points)) * (x_dot_y_dot.asDiagonal() * Eigen::MatrixXd::Identity(num_points, num_points));
+    // Objective function formulation
+    Eigen::MatrixXd P_xx = (curvatures_sq_den.array() * y_dot_sq.array()).matrix().asDiagonal();
+    Eigen::MatrixXd P_yy = (curvatures_sq_den.array() * x_dot_sq.array()).matrix().asDiagonal();
+    Eigen::MatrixXd P_xy = (curvatures_sq_den.array() * x_dot_y_dot.array()).matrix().asDiagonal();
 
-//     Eigen::MatrixXd T_nx = T_c * M_x;
-//     Eigen::MatrixXd T_ny = T_c * M_y;
+    Eigen::MatrixXd T_nx = T_c * M_x;
+    Eigen::MatrixXd T_ny = T_c * M_y;
 
-//     Eigen::MatrixXd H_x = T_nx.transpose() * P_xx * T_nx;
-//     Eigen::MatrixXd H_xy = T_ny.transpose() * P_xy * T_nx;
-//     Eigen::MatrixXd H_y = T_ny.transpose() * P_yy * T_ny;
-//     Eigen::MatrixXd H = H_x + H_xy + H_y;
-//     H = (H + H.transpose()) * 0.5;
+    Eigen::MatrixXd H_x = T_nx.transpose() * P_xx * T_nx;
+    Eigen::MatrixXd H_xy = T_ny.transpose() * P_xy * T_nx;
+    Eigen::MatrixXd H_y = T_ny.transpose() * P_yy * T_ny;
+    Eigen::MatrixXd H = H_x + H_xy + H_y;
+    H = (H + H.transpose()) * 0.5;
 
-//     Eigen::VectorXd f_x = 2 * q_x.transpose() * T_c.transpose() * P_xx * T_nx;
-//     Eigen::VectorXd f_y = 2 * q_y.transpose() * T_c.transpose() * P_yy * T_ny;
-//     Eigen::VectorXd f_xy = q_x.transpose() * T_c.transpose() * P_xy * T_ny + q_y.transpose() * T_c.transpose() * P_xy * T_nx;
-//     Eigen::VectorXd f = f_x + f_xy + f_y;
+    Eigen::VectorXd f_x = 2 * q_x.transpose() * T_c.transpose() * P_xx * T_nx;
+    Eigen::VectorXd f_y = 2 * q_y.transpose() * T_c.transpose() * P_yy * T_ny;
+    Eigen::VectorXd f_xy = q_x.transpose() * T_c.transpose() * P_xy * T_ny + q_y.transpose() * T_c.transpose() * P_xy * T_nx;
+    Eigen::VectorXd f = f_x + f_xy + f_y;
 
-//     // Constraint function formulation
-//     Eigen::VectorXd Q_x = curvatures_den.asDiagonal() * y_dot;
-//     Eigen::VectorXd Q_y = curvatures_den.asDiagonal() * x_dot;
+    // Constraint function formulation
+    Eigen::VectorXd Q_x = curvatures_den.array() * y_dot.array();
+    Eigen::VectorXd Q_y = curvatures_den.array() * x_dot.array();
 
-//     Eigen::MatrixXd E_curvature = Q_y.asDiagonal() * T_ny - Q_x.asDiagonal() * T_nx;
-//     Eigen::VectorXd curvature_reference = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
+    Eigen::MatrixXd E_curvature = Q_y.asDiagonal() * T_ny - Q_x.asDiagonal() * T_nx;
+    Eigen::VectorXd curvature_reference = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
 
-//     Eigen::VectorXd constraints_ge = Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
-//     Eigen::VectorXd constraints_le = -constraints_ge;
+    Eigen::VectorXd curv_constraints_ge = Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
+    Eigen::VectorXd curv_constraints_le = -curv_constraints_ge;
 
-//     // Boundary constraints
-//     Eigen::VectorXd left_dev_bnd = Eigen::Map<const Eigen::VectorXd>(dev_bnd.data(), num_points);
-//     Eigen::VectorXd right_dev_bnd = Eigen::VectorXd::Constant(num_points, 0.05);  // End points fixed
-//     left_dev_bnd(0) = right_dev_bnd(0) = left_dev_bnd(num_points - 1) = right_dev_bnd(num_points - 1) = 0.05;
+    // Boundary constraints
+    double end_point_boundary = 0.05;
+    left_dev_bnd[0] = end_point_boundary;
+    right_dev_bnd[0] = end_point_boundary;
+    left_dev_bnd[num_points - 1] = end_point_boundary;
+    right_dev_bnd[num_points - 1] = end_point_boundary;
 
-//     Eigen::MatrixXd E = Eigen::MatrixXd::Zero(2 * num_points, num_points);
-//     E.topRows(num_points) = Eigen::MatrixXd::Identity(num_points, num_points);
-//     E.bottomRows(num_points) = -E.topRows(num_points);
+    // Checking conditions
+    for (size_t i = 0; i < num_points; ++i) {
+        if (-right_dev_bnd[i] > left_dev_bnd[i] || -left_dev_bnd[i] > right_dev_bnd[i]) {
+            throw std::runtime_error("ERROR: Too small track");
+        }
+    }
 
-//     Eigen::VectorXd k(num_points * 2);
-//     k.head(num_points) = left_dev_bnd;
-//     k.tail(num_points) = right_dev_bnd;
+    // Matrix stacking and appending: E, k
+    Eigen::MatrixXd E(2 * num_points + 2 * E_curvature.rows(), E_curvature.cols());
+    E.topRows(num_points) = Eigen::MatrixXd::Identity(num_points, num_points);
+    E.block(num_points, 0, num_points, num_points) = -Eigen::MatrixXd::Identity(num_points, num_points);
+    E.block(2 * num_points, 0, E_curvature.rows(), E_curvature.cols()) = E_curvature;
+    E.bottomRows(E_curvature.rows()) = -E_curvature;
 
-//     // All constraints
-//     E.conservativeResize(E.rows() + E_curvature.rows(), Eigen::NoChange);
-//     E.bottomRows(E_curvature.rows()) = E_curvature;
-//     k.conservativeResize(k.size() + constraints_ge.size() + constraints_le.size());
-//     k.segment(num_points * 2, constraints_ge.size()) = constraints_ge;
-//     k.segment(num_points * 2 + constraints_ge.size(), constraints_le.size()) = constraints_le;
+    Eigen::VectorXd k(num_points * 2 + 2 * curv_constraints_ge.size());
+    for (size_t i = 0; i < num_points; ++i) {
+        k(i) = left_dev_bnd[i];
+        k(num_points + i) = right_dev_bnd[i];
+    }
+    k.segment(2 * num_points, curv_constraints_ge.size()) = curv_constraints_ge;
+    k.segment(2 * num_points + curv_constraints_ge.size(), curv_constraints_le.size()) = curv_constraints_le;
 
-//     // Sparse Matrices
-//     Eigen::SparseMatrix<double> H_sparse = H.sparseView();
-//     Eigen::SparseMatrix<double> E_sparse = E.sparseView();
 
-//     // OSQP setup ...
+    // Sparse Matrices
+    // Eigen::SparseMatrix<double> H_sparse = H.sparseView();
+    // Eigen::SparseMatrix<double> E_sparse = E.sparseView();
 
-//     // return alpha_min_curvature;
-// }
+    // OSQP setup ...
+
+    // return alpha_min_curvature;
+    /* Load problem data */
+    // OSQPFloat P_x[3] = {4.0, 1.0, 2.0, };
+    // OSQPInt P_nnz = 3;
+    // OSQPInt P_i[3] = {0, 0, 1, };
+    // OSQPInt P_p[3] = {0, 1, 3, };
+    // OSQPFloat q[2] = {1.0, 1.0, };
+    // OSQPFloat A_x[4] = {1.0, 1.0, 1.0, 1.0, };
+    // OSQPInt A_nnz = 4;
+    // OSQPInt A_i[4] = {0, 1, 0, 2, };
+    // OSQPInt A_p[3] = {0, 2, 4, };
+    // OSQPFloat l[3] = {1.0, 0.0, 0.0, };
+    // OSQPFloat u[3] = {1.0, 0.7, 0.7, };
+    // OSQPInt n = 2;
+    // OSQPInt m = 3;
+
+    // /* Exitflag */
+    // OSQPInt exitflag = 0;
+
+    // /* Solver, settings, matrices */
+    // OSQPSolver   *solver;
+    // OSQPSettings *settings;
+    // OSQPCscMatrix* P = malloc(sizeof(OSQPCscMatrix));
+    // OSQPCscMatrix* A = malloc(sizeof(OSQPCscMatrix));
+
+    // /* Populate matrices */
+    // csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
+    // csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
+
+    // /* Set default settings */
+    // settings = (OSQPSettings *)malloc(sizeof(OSQPSettings));
+    // if (settings) {
+    //     osqp_set_default_settings(settings);
+    //     settings->alpha = 1.0; /* Change alpha parameter */
+    // }
+
+    // /* Setup solver */
+    // exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
+
+    // /* Solve problem */
+    // if (!exitflag) exitflag = osqp_solve(solver);
+
+    // /* Cleanup */
+    // osqp_cleanup(solver);
+    // if (A) free(A);
+    // if (P) free(P);
+    // if (settings) free(settings);
+
+    // return (int)exitflag;
+}
+
+
 
 } // namespace my_global_planner
 

@@ -9,7 +9,7 @@ namespace my_global_planner {
 
 struct Boundary {
     std::vector<Eigen::Vector2d> points;
-    std::vector<float> distances;
+    std::vector<double> distances;
 };
 struct Boundaries {
     Boundary left_bnd;
