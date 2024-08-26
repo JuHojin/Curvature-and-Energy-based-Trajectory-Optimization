@@ -11,6 +11,8 @@
 #include <map>
 #include <unordered_map>
 
+#include "my_global_planner.h"
+
 namespace basic_planner {
 
 struct Node {
@@ -42,14 +44,13 @@ struct CompareNode {
 
 class AStarPlanner {
 public:
-    AStarPlanner(costmap_2d::Costmap2D* costmap);
+    AStarPlanner();
 
     bool makePlan(const unsigned int start_x, const unsigned int start_y,
                   const unsigned int goal_x, const unsigned int goal_y,
                   std::vector<geometry_msgs::PoseStamped>& plan);
 
 private:
-    costmap_2d::Costmap2D* costmap_;
     std::priority_queue<Node*, std::vector<Node*>, CompareNode> open_set_;
     std::unordered_map<unsigned int, Node> all_nodes_;
     unsigned int size_x_in_cells;

@@ -20,23 +20,16 @@ costmap_2d::Costmap2D* costmap = nullptr;
 ros::Publisher plan_publisher_bnd_L;
 ros::Publisher plan_publisher_bnd_R;
 
-MyGlobalPlanner::MyGlobalPlanner() : a_star_planner(nullptr) {
-}
+MyGlobalPlanner::MyGlobalPlanner() {}
 
 MyGlobalPlanner::MyGlobalPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros) {
     initialize(name, costmap_ros);
 }
 
-MyGlobalPlanner::~MyGlobalPlanner() {
-    if (a_star_planner) {
-        delete a_star_planner;
-        a_star_planner = nullptr;
-    }
-}
+MyGlobalPlanner::~MyGlobalPlanner() {}
 
 void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros) {
     costmap = costmap_ros->getCostmap();
-    a_star_planner = new basic_planner::AStarPlanner(costmap);
     ros::NodeHandle private_nh("~/" + name);
     plan_publisher_a_star = private_nh.advertise<nav_msgs::Path>("plan/a_star_plan", 1);
     plan_publisher_pose_smooth = private_nh.advertise<nav_msgs::Path>("plan/post_smooth", 1);
@@ -62,9 +55,10 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
     // Find initial Path: A* Planning
     ROS_INFO("Find path using A*.");
+    basic_planner::AStarPlanner a_star_planner;
     std::vector<geometry_msgs::PoseStamped> a_star_plan;
 
-    bool a_star_success = a_star_planner->makePlan(start_x, start_y, goal_x, goal_y, a_star_plan);
+    bool a_star_success = a_star_planner.makePlan(start_x, start_y, goal_x, goal_y, a_star_plan);
     updateOrientatoin(a_star_plan);
     nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
 

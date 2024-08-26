@@ -45,9 +45,7 @@ public:
                   const geometry_msgs::PoseStamped& goal,
                   std::vector<geometry_msgs::PoseStamped>& plan);
 
-private:
-    basic_planner::AStarPlanner* a_star_planner;
-    
+private:    
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
