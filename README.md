@@ -83,6 +83,25 @@ export PATH=/usr/local/cmake-3.18.5/bin:$PATH
 
 We will only use this version (3.18.5) when building and installing OSQP.
 
+#### Prerequisites: Update Eigen3 From Source Code
+
+To install OSQP-cpp, Eigen3 version 3.3.7 or higher is required.
+
+```bash
+cd ~/Downloads/
+wget https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
+tar -xzvf eigen-3.3.7.tar.gz
+```
+
+Install Eigen3
+
+```bash
+cd eigen-3.3.7
+mkdir build
+cd build
+cmake ..
+sudo make install
+```
 
 #### Install OSQP Library
 
@@ -110,6 +129,26 @@ sudo cmake --build . --target install
 ```
 
 This will compile the OSQP library in the Release configuration and install it to the default system location.
+
+#### Install osqp-cpp: A C++ Wrapper for OSQP
+
+Clone the source code.
+
+```bash
+cd ~
+git clone https://github.com/google/osqp-cpp.git
+```
+
+Install the C++ wrapper and test.
+
+```bash
+cd osqp-cpp
+mkdir build; cd build
+cmake ..
+make
+make test
+sudo make install
+```
 
 ## Usage
 
