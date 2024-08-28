@@ -1,4 +1,4 @@
-image: /home/acss/catkin_ws/src/f1tenth-sim/maps/race_track_obs.pgm
+image: race_track_obs.pgm
 resolution: 0.050000
 origin: [-14.896068, -3.533777, 0.000000]
 negate: 0

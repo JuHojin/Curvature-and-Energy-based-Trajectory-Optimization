@@ -124,7 +124,7 @@ global previous_speed
 
 previous_speed   = 0.0
 min_speed        = 0.0
-max_speed        = 80.0  # 100.0
+max_speed        = 20.0  # 100.0
 speed_delta      = 10.0  # 1.25
 previous_speed   = 0.0
 
