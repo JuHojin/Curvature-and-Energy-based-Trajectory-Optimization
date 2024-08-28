@@ -3,7 +3,6 @@
 #include "opt_curv.h"
 #include "constant.h"
 #include "path_func.h"
-#include "cubic_spline.h"
 
 #include <ros/ros.h>
 #include <Eigen/Dense>
@@ -357,7 +356,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
 //             return last_valid_d;
 //         }
 
-//         if (isClearLine(x, y, nx,z)) {
+//         if (isClearLine(x, y, nx, ny)) {
 //             // If we hit an obstacle, reduce the distance and continue
 //             last_valid_d = d - 1;
 //         } else {
