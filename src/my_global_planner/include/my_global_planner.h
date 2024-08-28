@@ -24,6 +24,7 @@ extern costmap_2d::Costmap2D* costmap;
 // Publisher
 extern ros::Publisher plan_publisher_bnd_L;
 extern ros::Publisher plan_publisher_bnd_R;
+extern ros::Publisher plan_publisher_opt;
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
@@ -49,6 +50,7 @@ private:
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
+    ros::Publisher plan_publisher_final;
 };
 
 } // namespace my_global_planner

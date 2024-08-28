@@ -19,6 +19,8 @@ namespace my_global_planner {
 costmap_2d::Costmap2D* costmap = nullptr;
 ros::Publisher plan_publisher_bnd_L;
 ros::Publisher plan_publisher_bnd_R;
+ros::Publisher plan_publisher_final;
+ros::Publisher plan_publisher_opt;
 
 MyGlobalPlanner::MyGlobalPlanner() {}
 
@@ -36,6 +38,8 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_uniform = private_nh.advertise<nav_msgs::Path>("plan/uniform", 1);
     plan_publisher_bnd_L = private_nh.advertise<nav_msgs::Path>("plan/bnd_L", 1);
     plan_publisher_bnd_R = private_nh.advertise<nav_msgs::Path>("plan/bnd_R", 1);
+    plan_publisher_opt = private_nh.advertise<nav_msgs::Path>("plan/opt", 1);
+    plan_publisher_final = private_nh.advertise<nav_msgs::Path>("plan/final", 1);
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
 
@@ -75,7 +79,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
     std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
     nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
     publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
-    plan = post_smooth_plan_world.poses;
 
     // Uniform path Spacing
     std::vector<geometry_msgs::PoseStamped> uniform_plan = uniformSpacing(post_smooth_plan);
@@ -85,8 +88,14 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
     // TBD: Adaptive path spacing
 
     // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
-    std::vector<Eigen::Vector2d> uniform_path_2d = convertPoseStampedToVector2d(uniform_plan);
-    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path_2d, 3);
+    std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
+    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, 10);
+    std::vector<geometry_msgs::PoseStamped> final_plan = convertVector2dToPoseStamped(opt_path);
+
+    nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
+    publishPath(plan_publisher_final, final_plan_world);
+
+    plan = final_plan_world.poses;
 
     return a_star_success;
 }

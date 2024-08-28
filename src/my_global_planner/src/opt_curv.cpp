@@ -3,6 +3,7 @@
 #include "opt_curv.h"
 #include "constant.h"
 #include "path_func.h"
+#include "cubic_spline.h"
 
 #include <ros/ros.h>
 #include <Eigen/Dense>
@@ -12,26 +13,32 @@
 #include <cmath>
 #include <limits>
 #include <tf/tf.h>
+// #include "spline/src/spline.h"
 
 namespace my_global_planner {
 
-std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vector2d>& path, const size_t max_iter) {
-    Eigen::MatrixXd A;
-    std::vector<Eigen::Vector2d> normal_vectors;
-
-    Boundaries Boundaries;
-
+std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter) {
+    
     std::vector<Eigen::Vector2d> new_path;
+    Eigen::VectorXd alpha;
 
+    // std::ostringstream oss;
+    // for (size_t i = 0; i < path.size(); ++i) {
+    //     oss << " original path: (" << path[i].x() << ", " << path[i].y() << ")\n";
+    // }
+    // ROS_INFO_STREAM(oss.str());
+    
     for (int i = 0; i < max_iter; ++i) {
         ROS_INFO("Optimzation Step [%d]", i+1);
+        if (i != 0) {
+            path = uniformSpacingVector2d(new_path);
+        }
 
-        updateSystemMatrix(path, A);
-        updateNormalVectors(path, normal_vectors);
+        Eigen::MatrixXd A = getSystemMatrix(path);
+        std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
 
         // Boundaries
-        updateBoundaries(Boundaries, path, normal_vectors);
-        // 
+        Boundaries Boundaries = getBoundaries(path, normal_vectors);
         std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
         std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
         nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
@@ -39,14 +46,35 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vec
         publishPath(plan_publisher_bnd_L, left_bnd_world);
         publishPath(plan_publisher_bnd_R, right_bnd_world);
 
-        Eigen::VectorXd alpha = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances,
-                                                     normal_vectors, A, Constant::CURVATURE_BOUND, 0, 0);
+         // Calculate start angle
+        Eigen::Vector2d start_segment = path[1] - path[0];
+        double start_angle = std::atan2(start_segment.y(), start_segment.x());
+
+        // Calculate end angle
+        Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
+        double end_angle = std::atan2(end_segment.y(), end_segment.x());
+
+        // Alpha
+        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle);
+        alpha = result.first;
+        int success = result.second;
+
+        if (success == OSQP_SOLVED) {
+            new_path = getPathMinCurvature(path, normal_vectors, alpha);
+            std::vector<geometry_msgs::PoseStamped> new_path_tmp = convertVector2dToPoseStamped(new_path);
+            nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
+            publishPath(plan_publisher_opt, new_path_world);
+        } else {
+            ROS_WARN("Optimization Fail at step[%d]",i+1);
+            break;
+        }
+        
     }
 
     return new_path;
 }
 
-void updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixXd& A) {
+Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     int numPoints = path.size();
     int numSplines = numPoints - 1;
     Eigen::VectorXd pointDist(numSplines);
@@ -61,7 +89,7 @@ void updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixX
         scaling(i) = pointDist(i) / pointDist(i + 1);
     }
 
-    A = Eigen::MatrixXd::Zero(numSplines * 4, numSplines * 4);
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(numSplines * 4, numSplines * 4);
 
     // Base matrix for constraints, repeated in A
     Eigen::MatrixXd baseA(4, 8);
@@ -93,12 +121,16 @@ void updateSystemMatrix(const std::vector<Eigen::Vector2d>& path, Eigen::MatrixX
     A(numSplines * 4 - 1, numSplines * 4 - 4 + 1) = 1;
     A(numSplines * 4 - 1, numSplines * 4 - 4 + 2) = 2;
     A(numSplines * 4 - 1, numSplines * 4 - 4 + 3) = 3;
+
+    return A;
 }
 
-void updateNormalVectors(const std::vector<Eigen::Vector2d>& path, std::vector<Eigen::Vector2d>& normal_vectors) {
+std::vector<Eigen::Vector2d> getNormalVectors(const std::vector<Eigen::Vector2d>& path) {
+    std::vector<Eigen::Vector2d> normal_vectors;
+
     if (path.size() < 2) {
         ROS_WARN("Cannot compute normal vectors: at least two points are required.");
-        return;
+        return normal_vectors;
     }
 
     normal_vectors.resize(path.size());
@@ -107,17 +139,17 @@ void updateNormalVectors(const std::vector<Eigen::Vector2d>& path, std::vector<E
         Eigen::Vector2d normal;
 
         if (i == 0) {
-            // For start point
+            // Calculate normal at the start point
             double dx = path[i + 1].x() - path[i].x();
             double dy = path[i + 1].y() - path[i].y();
             normal = Eigen::Vector2d(-dy, dx);
         } else if (i == path.size() - 1) {
-            // For goal point
+            // Calculate normal at the end point
             double dx = path[i].x() - path[i - 1].x();
             double dy = path[i].y() - path[i - 1].y();
             normal = Eigen::Vector2d(-dy, dx);
         } else {
-            // For intermediate points
+            // Calculate normal for intermediate points
             double dx = path[i + 1].x() - path[i - 1].x();
             double dy = path[i + 1].y() - path[i - 1].y();
             normal = Eigen::Vector2d(-dy, dx);
@@ -126,6 +158,8 @@ void updateNormalVectors(const std::vector<Eigen::Vector2d>& path, std::vector<E
         normal.normalize();
         normal_vectors[i] = normal;
     }
+
+    return normal_vectors;
 }
 
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle) {
@@ -221,7 +255,8 @@ void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path,
     }
 }
 
-void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors) {
+Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors) {
+    Boundaries boundaries;
     size_t n = path.size();
     boundaries.left_bnd.points.resize(n);
     boundaries.left_bnd.distances.resize(n);
@@ -257,26 +292,82 @@ void updateBoundaries(Boundaries& boundaries, const std::vector<Eigen::Vector2d>
         boundaries.left_bnd.points[i] = createBoundaryPoint(point, left_dx, left_dy, boundaries.left_bnd.distances[i]);
         boundaries.right_bnd.points[i] = createBoundaryPoint(point, right_dx, right_dy, boundaries.right_bnd.distances[i]);
     }
+
+    return boundaries;
 }
+
+// double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
+//     int x = point.x();
+//     int y = point.y();
+    
+//     for (int d = 0; d < Constant::DEV_MAX; ++d) {
+//         int nx = x + std::round(dx * d);
+//         int ny = y + std::round(dy * d);
+        
+//         if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
+//             return d; // Return the distance at which boundary is reached
+//         }
+
+//         if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {
+//             return d; // Return the distance at which an obstacle is encountered
+//         }
+//     }// Return the distance at which an obstacle is encountered or boundary is reached
+//     return Constant::DEV_MAX; // Return the maximum distance if no obstacles are encountered
+// }
 
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
     int x = point.x();
     int y = point.y();
     
-    for (int d = 0; d < Constant::DEV_MAX; ++d) {
+    int last_valid_d = Constant::DEV_MAX;
+
+    for (int d = Constant::DEV_MAX; d > 0; --d) {
         int nx = x + std::round(dx * d);
         int ny = y + std::round(dy * d);
         
         if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
-            return d; // Return the distance at which boundary is reached
+            // If we hit a boundary, return the last valid distance
+            return last_valid_d;
         }
 
-        if (costmap->getCost(nx, ny) >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
-            return d; // Return the distance at which an obstacle is encountered
+        if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {
+            // If we hit an obstacle, reduce the distance and continue
+            last_valid_d = d - 1;
+        } else {
+            // If no obstacle is found, return the last valid distance
+            return last_valid_d;
         }
-    }// Return the distance at which an obstacle is encountered or boundary is reached
-    return Constant::DEV_MAX; // Return the maximum distance if no obstacles are encountered
+    }
+
+    return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
 }
+
+// double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
+//     int x = point.x();
+//     int y = point.y();
+    
+//     int last_valid_d = Constant::DEV_MAX;
+
+//     for (int d = Constant::DEV_MAX; d > 0; --d) {
+//         int nx = x + std::round(dx * d);
+//         int ny = y + std::round(dy * d);
+        
+//         if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
+//             // If we hit a boundary, return the last valid distance
+//             return last_valid_d;
+//         }
+
+//         if (isClearLine(x, y, nx,z)) {
+//             // If we hit an obstacle, reduce the distance and continue
+//             last_valid_d = d - 1;
+//         } else {
+//             // If no obstacle is found, return the last valid distance
+//             return last_valid_d;
+//         }
+//     }
+
+//     return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
+// }
 
 void constrainDeviationChange(std::vector<double>& dev_list) {
     // Constrain forward direction
@@ -305,26 +396,52 @@ Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, dou
     return Eigen::Vector2d(point.x() + dx * distance, point.y() + dy * distance);
 }
 
-Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
-                                                    std::vector<double> left_dev_bnd,
-                                                    std::vector<double> right_dev_bnd,
-                                                    const std::vector<Eigen::Vector2d>& normal_vectors,
-                                                    const Eigen::MatrixXd& A,
-                                                    double curvature_bnd,
-                                                    double start_angle, double end_angle) {
+csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat) {
+    // Count nonzeros in the upper triangular part
+    int nonzeros = 0;
+    for (int k = 0; k < mat.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(mat, k); it; ++it) {
+            if (it.row() <= it.col()) {
+                nonzeros++;
+            }
+        }
+    }
+
+    c_int* row_indices = (c_int*)c_malloc(nonzeros * sizeof(c_int));
+    c_int* col_pointers = (c_int*)c_malloc((mat.cols() + 1) * sizeof(c_int));
+    c_float* values = (c_float*)c_malloc(nonzeros * sizeof(c_float));
+
+    int idx = 0;
+    col_pointers[0] = 0;
+    for (int k = 0; k < mat.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(mat, k); it; ++it) {
+            if (it.row() <= it.col()) { // Only upper triangular part
+                values[idx] = it.value();
+                row_indices[idx] = it.row();
+                idx++;
+            }
+        }
+        col_pointers[k + 1] = idx;
+    }
+
+    return csc_matrix(mat.rows(), mat.cols(), nonzeros, values, row_indices, col_pointers);
+}
+
+
+std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
+                                     std::vector<double> left_dev_bnd,
+                                     std::vector<double> right_dev_bnd,
+                                     const std::vector<Eigen::Vector2d>& normal_vectors,
+                                     const Eigen::MatrixXd& A,
+                                     double curvature_bnd,
+                                     double start_angle, double end_angle) {
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
-
-    // Matrix and vector setups for the optimization problem
-    // 1/2*x.T*H*x + f*x
-    // E*x < k
-    Eigen::MatrixXd H, Q, E;
-    Eigen::VectorXd f, k;
 
     // Construct extraction matrices : b component extraction
     Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
     for (int i = 0; i < num_splines; ++i) {
-        A_ex_b[i, i * 4 + 1] = 1;
+        A_ex_b(i, i * 4 + 1) = 1;
     }
     A_ex_b.row(num_points - 1).tail(4) << 0, 1, 2, 3;
 
@@ -335,8 +452,8 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
     }
     A_ex_c.row(num_points - 1).tail(4) << 0, 0, 2, 6;
 
+    // Eigen::MatrixXd A_inv = A.completeOrthogonalDecomposition().pseudoInverse();
     Eigen::MatrixXd A_inv = A.inverse();
-
     Eigen::MatrixXd T_c = A_ex_c * A_inv;
 
     // Construct normal vector matrix
@@ -404,8 +521,9 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
 
     // Curvature denominator calculations
     Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
+    curv_den = curv_den.unaryExpr([](double v) { return std::abs(v) < 1e-9 ? 1e-9 : v; });
     Eigen::VectorXd curvatures_den = curv_den.array().inverse();
-    curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; }); // Check infinity
+    curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; });
     Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
 
     // Objective function formulation
@@ -421,6 +539,8 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
     Eigen::MatrixXd H_y = T_ny.transpose() * P_yy * T_ny;
     Eigen::MatrixXd H = H_x + H_xy + H_y;
     H = (H + H.transpose()) * 0.5;
+    // double regularization = 1e-6;
+    // H += regularization * Eigen::MatrixXd::Identity(H.rows(), H.cols());
 
     Eigen::VectorXd f_x = 2 * q_x.transpose() * T_c.transpose() * P_xx * T_nx;
     Eigen::VectorXd f_y = 2 * q_y.transpose() * T_c.transpose() * P_yy * T_ny;
@@ -435,7 +555,7 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
     Eigen::VectorXd curvature_reference = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
 
     Eigen::VectorXd curv_constraints_ge = Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
-    Eigen::VectorXd curv_constraints_le = -curv_constraints_ge;
+    Eigen::VectorXd curv_constraints_le = -Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
 
     // Boundary constraints
     double end_point_boundary = 0.05;
@@ -451,79 +571,106 @@ Eigen::VectorXd getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
         }
     }
 
-    // Matrix stacking and appending: E, k
-    Eigen::MatrixXd E(2 * num_points + 2 * E_curvature.rows(), E_curvature.cols());
+    // Matrix stacking and appending: E, u, l
+    Eigen::MatrixXd E(2 * num_points, num_points);
     E.topRows(num_points) = Eigen::MatrixXd::Identity(num_points, num_points);
-    E.block(num_points, 0, num_points, num_points) = -Eigen::MatrixXd::Identity(num_points, num_points);
-    E.block(2 * num_points, 0, E_curvature.rows(), E_curvature.cols()) = E_curvature;
-    E.bottomRows(E_curvature.rows()) = -E_curvature;
+    E.bottomRows(num_points) = E_curvature;
 
-    Eigen::VectorXd k(num_points * 2 + 2 * curv_constraints_ge.size());
+    Eigen::VectorXd u(2 * num_points);
+    Eigen::VectorXd l(2 * num_points);
     for (size_t i = 0; i < num_points; ++i) {
-        k(i) = left_dev_bnd[i];
-        k(num_points + i) = right_dev_bnd[i];
+        u(i) = left_dev_bnd[i];
+        l(i) = -right_dev_bnd[i];
     }
-    k.segment(2 * num_points, curv_constraints_ge.size()) = curv_constraints_ge;
-    k.segment(2 * num_points + curv_constraints_ge.size(), curv_constraints_le.size()) = curv_constraints_le;
+    u.segment(num_points, num_points) = curv_constraints_ge;
+    l.segment(num_points, num_points) = curv_constraints_le;
 
+    // Convert Eigen matrices/vectors to string for ROS_INFO
+    std::stringstream ss_E, ss_u, ss_l;
+    // ss_E << E;
+    ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
+    ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
 
-    // Sparse Matrices
-    // Eigen::SparseMatrix<double> H_sparse = H.sparseView();
-    // Eigen::SparseMatrix<double> E_sparse = E.sparseView();
+    // ROS_INFO_STREAM to output the contents
+    // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
+    ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
+    ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
 
-    // OSQP setup ...
+    // Check convexity by inspecting the eigenvalues of H
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
+    ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
 
-    // return alpha_min_curvature;
-    /* Load problem data */
-    // OSQPFloat P_x[3] = {4.0, 1.0, 2.0, };
-    // OSQPInt P_nnz = 3;
-    // OSQPInt P_i[3] = {0, 0, 1, };
-    // OSQPInt P_p[3] = {0, 1, 3, };
-    // OSQPFloat q[2] = {1.0, 1.0, };
-    // OSQPFloat A_x[4] = {1.0, 1.0, 1.0, 1.0, };
-    // OSQPInt A_nnz = 4;
-    // OSQPInt A_i[4] = {0, 1, 0, 2, };
-    // OSQPInt A_p[3] = {0, 2, 4, };
-    // OSQPFloat l[3] = {1.0, 0.0, 0.0, };
-    // OSQPFloat u[3] = {1.0, 0.7, 0.7, };
-    // OSQPInt n = 2;
-    // OSQPInt m = 3;
+    // Solve QP
+    Eigen::SparseMatrix<double> H_sparse = H.sparseView();
+    Eigen::SparseMatrix<double> E_sparse = E.sparseView();
 
-    // /* Exitflag */
-    // OSQPInt exitflag = 0;
+    // OSQP problem settings
+    OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
+    osqp_set_default_settings(settings);
+    settings->rho = 0.1;
+    settings->alpha = 1.6;
 
-    // /* Solver, settings, matrices */
-    // OSQPSolver   *solver;
-    // OSQPSettings *settings;
-    // OSQPCscMatrix* P = malloc(sizeof(OSQPCscMatrix));
-    // OSQPCscMatrix* A = malloc(sizeof(OSQPCscMatrix));
+    // OSQP data
+    OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
+    data->n = H.rows();
+    data->m = E.rows();
+    data->P = eigenToCSC(H_sparse);
+    data->q = f.data();
+    data->A = eigenToCSC(E_sparse);
+    data->l = l.data();
+    data->u = u.data();
 
-    // /* Populate matrices */
-    // csc_set_data(A, m, n, A_nnz, A_x, A_i, A_p);
-    // csc_set_data(P, n, n, P_nnz, P_x, P_i, P_p);
+    // Setup workspace
+    OSQPWorkspace *work;
+    osqp_setup(&work, data, settings);
 
-    // /* Set default settings */
-    // settings = (OSQPSettings *)malloc(sizeof(OSQPSettings));
-    // if (settings) {
-    //     osqp_set_default_settings(settings);
-    //     settings->alpha = 1.0; /* Change alpha parameter */
-    // }
+    // Solve the problem
+    osqp_solve(work);
 
-    // /* Setup solver */
-    // exitflag = osqp_setup(&solver, P, q, A, l, u, m, n, settings);
+    // Extract the solution
+    Eigen::VectorXd solution(data->n);
+    for (int i = 0; i < data->n; ++i) {
+        solution[i] = work->solution->x[i];
+    }
 
-    // /* Solve problem */
-    // if (!exitflag) exitflag = osqp_solve(solver);
+    int success = work->info->status_val;
 
-    // /* Cleanup */
-    // osqp_cleanup(solver);
-    // if (A) free(A);
-    // if (P) free(P);
-    // if (settings) free(settings);
+    // Clean up
+    osqp_cleanup(work);
+    c_free(data->P->x);
+    c_free(data->P->i);
+    c_free(data->P->p);
+    c_free(data->P);
+    c_free(data->A->x);
+    c_free(data->A->i);
+    c_free(data->A->p);
+    c_free(data->A);
+    c_free(data);
+    c_free(settings);
 
-    // return (int)exitflag;
+    return std::make_pair(solution, success);
 }
 
+std::vector<Eigen::Vector2d> getPathMinCurvature(const std::vector<Eigen::Vector2d>& path,
+                                                 const std::vector<Eigen::Vector2d>& normal_vectors,
+                                                 const Eigen::VectorXd& alpha) {
+    std::vector<Eigen::Vector2d> new_path(path.size());
+
+    for (size_t i = 0; i < path.size(); ++i) {
+        new_path[i] = path[i] + alpha(i) * normal_vectors[i];
+        
+        std::ostringstream oss;
+        oss << "Iteration " << i << ":\n"
+            << "  path[" << i << "]: (" << path[i].x() << ", " << path[i].y() << ")\n"
+            << "  normal_vectors[" << i << "]: (" << normal_vectors[i].x() << ", " << normal_vectors[i].y() << ")\n"
+            << "  alpha[" << i << "]: " << alpha(i) << "\n"
+            << "  new_path[" << i << "]: (" << new_path[i].x() << ", " << new_path[i].y() << ")";
+
+        ROS_INFO_STREAM(oss.str());
+    }
+
+    return new_path;
+}
 
 
 } // namespace my_global_planner

@@ -1,5 +1,6 @@
 // a_star.cpp
 #include "a_star.h"
+#include "constant.h"
 
 #include <tf/tf.h>
 #include <cmath>
@@ -90,7 +91,7 @@ namespace basic_planner {
                 if (dx == 0 && dy == 0) continue;
                 int nx = current.x + dx;
                 int ny = current.y + dy;
-                if (my_global_planner::costmap->getCost(nx, ny) < costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+                if (my_global_planner::costmap->getCost(nx, ny) < Constant::OBSTACLE_INFLATION_INIT) {
                     float cost = std::sqrt(dx * dx + dy * dy);
                     neighbors.push_back(std::make_pair(getNode(nx, ny), cost));
                 }

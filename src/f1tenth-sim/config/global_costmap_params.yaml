@@ -4,8 +4,13 @@ footprint: [[-0.1, -0.2],
             [ 0.5,  0.2],
             [-0.1,  0.2]]
 
-inflation_radius: 10.0
-cost_scaling_factor: 5.0
+inflation_radius: 40.0
+cost_scaling_factor: 1.0
+
+# Unknown area configuration
+unknown_obstacle: true
+unknown_cost_value: 255
+lethal_cost_threshold: 100  # Threshold above which costs are treated as obstacles
 
 global_frame: map
 robot_base_frame: base_link
