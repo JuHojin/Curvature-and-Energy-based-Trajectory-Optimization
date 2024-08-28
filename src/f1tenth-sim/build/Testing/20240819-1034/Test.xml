@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20240819-1034-Experimental"
+	Name="acss1"
+	Generator="ctest-3.10.2"
+	CompilerName="/usr/bin/c++"
+	CompilerVersion="7.5.0"
+	OSName="Linux"
+	Hostname="acss1"
+	OSRelease="5.4.0-150-generic"
+	OSVersion="#167~18.04.1-Ubuntu SMP Wed May 24 00:51:42 UTC 2023"
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="GenuineIntel"
+	VendorID="Intel Corporation"
+	FamilyID="6"
+	ModelID="183"
+	ProcessorCacheSize="33792"
+	NumberOfLogicalCPU="28"
+	NumberOfPhysicalCPU="20"
+	TotalVirtualMemory="2047"
+	TotalPhysicalMemory="31876"
+	LogicalProcessorsPerPhysical="1"
+	ProcessorClockFrequency="5500"
+	>
+	<Testing>
+		<StartDateTime>Aug 19 19:34 KST</StartDateTime>
+		<StartTestTime>1724063681</StartTestTime>
+		<TestList/>
+		<EndDateTime>Aug 19 19:34 KST</EndDateTime>
+		<EndTestTime>1724063681</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

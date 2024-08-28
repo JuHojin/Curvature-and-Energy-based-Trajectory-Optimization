@@ -15,9 +15,9 @@ namespace basic_planner {
 
 
     // A* Planner
-    AStarPlanner::AStarPlanner(costmap_2d::Costmap2D* costmap) : costmap_(costmap) {
-        size_x_in_cells = costmap_->getSizeInCellsX();
-        size_y_in_cells = costmap_->getSizeInCellsY();
+    AStarPlanner::AStarPlanner() {
+        size_x_in_cells = my_global_planner::costmap->getSizeInCellsX();
+        size_y_in_cells = my_global_planner::costmap->getSizeInCellsY();
     }
 
     bool AStarPlanner::makePlan(const unsigned int start_x, const unsigned int start_y,
@@ -90,7 +90,7 @@ namespace basic_planner {
                 if (dx == 0 && dy == 0) continue;
                 int nx = current.x + dx;
                 int ny = current.y + dy;
-                if (costmap_->getCost(nx, ny) < costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+                if (my_global_planner::costmap->getCost(nx, ny) < costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
                     float cost = std::sqrt(dx * dx + dy * dy);
                     neighbors.push_back(std::make_pair(getNode(nx, ny), cost));
                 }
