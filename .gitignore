@@ -6,5 +6,6 @@ src/cartographer/
 src/cartographer_ros/
 src/.rosinstall
 src/.rosinstall.bak
+src/Assignment/
 .catkin_workspace
 src/f1tenth-sim/rviz/default.rviz

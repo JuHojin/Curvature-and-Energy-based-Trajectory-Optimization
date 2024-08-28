@@ -2,15 +2,22 @@
 import numpy as np
 import os
 import math
+# import control as ctl
+import pandas as pd
 
 import roslib
 import rospy
 import rospkg
+import sys
+import select
+import termios
+import tty
+from scipy.linalg import solve_continuous_are
 
 from std_msgs.msg import Int16
-from ackermann_msgs.msg import AckermannDrive
-from nav_msgs.msg import Path
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from ackermann_msgs.msg import AckermannDrive, AckermannDriveStamped
+from nav_msgs.msg import Path, Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped, Vector3Stamped
 
 import tf
 from tf.transformations import euler_from_quaternion
@@ -25,8 +32,8 @@ def normalize_angle(angle):
         norm_angle = angle
     return norm_angle
 
+# Find nearest point
 def find_nearest_point(ego_x, ego_y, x_list, y_list):
-
     x_arr = np.array(x_list)
     y_arr = np.array(y_list)
 
@@ -38,49 +45,36 @@ def find_nearest_point(ego_x, ego_y, x_list, y_list):
     return near_idx, near_dist
 
 # Calculate Error
-def calc_error(ego_x, ego_y, ego_yaw, x_list, y_list, lookahead=1):
-    """
-    TODO
-    Local coordinate approach
-    (!It doesn't matter if you implement the global coordinates approach.)
-    (!Just return the cross-track and heading errors.)
-    1. Transform from global to local coordinate trajectory.
-    2. Find the nearest waypoint.
-    3. Set lookahead waypoint.
-        - (hint) use the index of the nearest waypoint (near_ind) from 'find_nearest_point'.
-        - (hint) consider that the next index of the terminal waypoint is 0, which is not terminal_index + 1.
-    4. Calculate errors
-        - error_yaw (yaw error)
-            : (hint) use math.atan2 for calculating angle btw lookahead and next waypoints.
-            : (hint) consider that the next index of the terminal waypoint is 0, which is not terminal_index + 1.
-        - error_y (crosstrack error)
-            : (hint) y value of the lookahead point in local coordinate waypoint trajectory.
-    """
-    # # 1. Global to Local coordinate
-    # local_x_list, local_y_list = global2local(ego_x, ego_y, ego_yaw, x_list, y_list)
-
+def calc_error(ego_x, ego_y, ego_yaw, x_list, y_list, lookahead):
     # 2. Find the nearest waypoint
-    _, near_idx = find_nearest_point(ego_x, ego_y, x_list, y_list)
-    nearest_point_x = x_list[near_idx]
-    nearest_point_y = y_list[near_idx]
+    near_idx, _ = find_nearest_point(ego_x, ego_y, x_list, y_list)
+    rospy.loginfo("current near_idx: %s", near_idx)
 
     # 3. Set lookahead waypoint (index increment of waypoint trajectory)
-    lookahead_idx = near_idx + lookahead
+    look_ahead_idx = max(min(near_idx + lookahead, len(x_list) - 1), 0)
+    rospy.loginfo("current look_ahead_idx: %s", look_ahead_idx)
 
-    if look_ahead_idx > len(x_list) - 1:
-            look_ahead_idx = len(x_list) - 1
-            
-    lookahead_point_x = x_list[lookahead_idx]
-    loodahead_point_y = y_list[lookahead_idx]
+    lookahead_point_x = x_list[look_ahead_idx]
+    lookahead_point_y = y_list[look_ahead_idx]
 
     # 4. Calculate errors
-    error_yaw = 0
-    error_yaw = normalize_angle(error_yaw) # Normalize angle to [-pi, +pi]
-    error_y   = 0
+    if look_ahead_idx < len(x_list) - 1:
+        error_yaw = math.atan2(y_list[look_ahead_idx + 1] - lookahead_point_y,
+                               x_list[look_ahead_idx + 1] - lookahead_point_x) - ego_yaw
+    else:
+        error_yaw = math.atan2(lookahead_point_y - y_list[look_ahead_idx - 1],
+                               lookahead_point_x - x_list[look_ahead_idx - 1]) - ego_yaw
     
+    error_yaw = normalize_angle(error_yaw)  # Normalize angle to [-pi, +pi]
+    
+    gamma = math.atan2(y_list[look_ahead_idx] - ego_y, 
+                       x_list[look_ahead_idx] - ego_x) - ego_yaw
+    error_y = math.sqrt((x_list[look_ahead_idx] - ego_x) ** 2 + 
+                        (y_list[look_ahead_idx] - ego_y) ** 2) * math.sin(gamma)
+
     return error_y, error_yaw
 
-class Auto_Controller():
+class AutoController():
     def __init__(self):
         # ROS init
         rospy.init_node('auto_control', anonymous = True)
@@ -96,113 +90,205 @@ class Auto_Controller():
         self.ego_yaw = 0
         self.ego_vx  = 0
 
-        self.wpt_look_ahead = 0   # [index]
+        self.wheelbase = 0.3
+
+        self.wpt_look_ahead = 2   # [index]
 
         # Pub/Sub
-        self.sub_pose    = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.callback_pose)
+        # self.sub_pose    = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.callback_pose)
         self.sub_path    = rospy.Subscriber('/move_base/MyGlobalPlanner/plan/uniform', Path, self.callback_path)
-        self.pub_command = rospy.Publisher('/control', AckermannDrive, queue_size=5)
+        self.sub_odom    = rospy.Subscriber('/car_1/base/odom', Odometry, self.callback_odom)
+        self.pub_command = rospy.Publisher('/{}/command'.format(str(sys.argv[1])), AckermannDrive, queue_size = 1)
 
-        rospy.spin()
+        # throttle PID
+        self.integral_error_v = 0
+        self.derivative_error_v = 0
 
-    def callback_pose(self, msg):
+    def callback_path(self, msg):
+        self.x_list = []
+        self.y_list = []
+
+        for pose_stamped in msg.poses:
+            self.x_list.append(pose_stamped.pose.position.x)
+            self.y_list.append(pose_stamped.pose.position.y)
+
+        if not self.x_list or not self.y_list:
+            rospy.logwarn("Path is empty. Waiting for valid path...")
+            return    
+
+    def callback_odom(self, msg):
         self.ego_x = msg.pose.pose.position.x
         self.ego_y = msg.pose.pose.position.y
-
         # get euler from quaternion
         q = msg.pose.pose.orientation
         q_list = [q.x, q.y, q.z, q.w]
         _, _, self.ego_yaw = euler_from_quaternion(q_list)
 
-    def callback_path(self, msg):
-        x_list = []
-        y_list = []
+        # Get linear velocities in the global frame
+        vx = msg.twist.twist.linear.x
+        vy = msg.twist.twist.linear.y
+        # Convert global velocities to local velocities using the yaw angle
+        self.ego_vx = vx * np.cos(self.ego_yaw) + vy * np.sin(self.ego_yaw)
+        self.ego_vy = -vx * np.sin(self.ego_yaw) + vy * np.cos(self.ego_yaw)
 
-        for pose_stamped in msg.poses:
-            x_list.append(pose_stamped.pose.position.x)
-            y_list.append(pose_stamped.pose.position.y)
-        rospy.loginfo("X coordinates: %s", x_list)
-        rospy.loginfo("Y coordinates: %s", y_list)            
+        rospy.loginfo("self.ego_vx: %s", self.ego_vx)
+        # Log the local velocities
+        rospy.loginfo("Local linear velocities: vx: {:.3f}, vy: {:.3f}".format(self.ego_vx, self.ego_vy))
 
     # Controller
     def steer_control(self, error_y, error_yaw):
-        """
-        TODO
-        Implement a steering controller (PID controller or Pure pursuit or Stanley method).
-        You can use not only error_y, error_yaw, but also other input arguments for this controller if you want.
-        """
-        steer = 0
+        L = 0.3
+        v = self.ego_vx
+        v = max(0.02, v)
+        # rospy.loginfo("Control velocity (v): %s", v)
 
-        # Control limit
+        A = np.array([[0, v],
+                      [0, 0]])
+        B = np.array([[0],
+                      [v / L]])
+        Q = np.array([[10, 0],
+                      [0, 100]])
+        R = np.array([[2500]])
+
+        # rospy.loginfo("State matrix (A):\n%s\nControl matrix (B):\n%s", A, B)
+
+        P = solve_continuous_are(A, B, Q, R)
+        K = -np.dot(np.dot(np.linalg.inv(R), B.T), P)  
+
+        # rospy.loginfo("Gain matrix (K):\n%s", K)
+
+        steer = -np.dot(K, np.array([error_y, error_yaw]))
         steer = np.clip(steer, -self.MAX_STEER, self.MAX_STEER)
-
+        # rospy.loginfo("error_y, error_yaw: %s, %s", error_y, error_yaw)
+        # rospy.loginfo("Steering command before clipping: %s", steer)
         return steer
 
     def speed_control(self, error_v):
-        """
-        TODO
-        Implement a speed controller (PID controller).
-        You can use not only error_v, but also other input arguments for this controller if you want.
-        """
-        throttle = 0
-                
+        Kp = 10
+        Ki = 1
+        Kd = 0.1
+
+        dt = 0.01
+
+        self.integral_error_v += error_v * dt
+
+        if self.derivative_error_v is not None:
+            derivative = (error_v - self.derivative_error_v) / dt
+        else:
+            derivative = 0
+
+        throttle = Kp * error_v + Ki * self.integral_error_v + Kd * derivative
+
+        self.derivative_error_v = error_v
+
+        throttle = max(min(throttle, 1.0), -1.0)
+
         return throttle
 
-    def publish_command(self, steer, accel):
-        """
-        Publish command as AckermannDriveStamped
-        ref: http://docs.ros.org/en/jade/api/ackermann_msgs/html/msg/AckermannDriveStamped.html
-        """
-        msg = AckermannDrive()
-        msg.drive.steering_angle = steer / np.deg2rad(17.75)
-        msg.drive.acceleration = accel
-        self.pub_command.publish(msg)
+    def publish_command(self, steer, speed):
+        command = AckermannDrive()
+        command.steering_angle = steer / np.deg2rad(17.75)
+        command.speed = speed
+        self.pub_command.publish(command)
+
+def getKey():
+   tty.setraw(sys.stdin.fileno())
+   select.select([sys.stdin], [], [], 0)
+   key = sys.stdin.read(1)
+   termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+   rospy.loginfo("key input is %s" %(key))
+   return key
+
+def precompute_gain_tables(v_min, v_max, num_points):
+    v_values = np.linspace(v_min, v_max, num_points)
+    K_values = {}
+
+    L = 0.3 # tmp wheel base
+    Q = np.array([[10, 0],
+                  [0, 100]])
+    R = np.array([[2500]])
+
+    for v in v_values:
+        A = np.array([[0, v], [0, 0]])
+        B = np.array([[0], [v / L]])
+        P = solve_continuous_are(A, B, Q, R)
+        K = -np.dot(np.dot(np.linalg.inv(R), B.T), P)
+        K_values[v] = K
+
+    return K_values
 
 def main():
-    # Load Waypoint
-    rospack = rospkg.RosPack()
-    WPT_CSV_PATH = rospack.get_path('waypoint_follower') + "/wpt_data/wpt_data_dense.csv"
-    csv_data = pd.read_csv(WPT_CSV_PATH, sep=',', header=None)
-    wpts_x = csv_data.values[:,0]
-    wpts_y = csv_data.values[:,1]
-    
+
     # List to evaluate performance
     error_y_data = []
     error_v_data = []
 
-    print("loaded wpt :", wpts_x.shape, wpts_y.shape)
+    K_values = precompute_gain_tables(0.02, 4.02, 401)
 
     # Define controller
-    wpt_control = WaypointFollower()
+    auto_control = AutoController()
+    try:
+        while not rospy.is_shutdown():
+            # key = getKey()
+            # if key == '\x03':
+            #     rospy.loginfo("Ctrl+C pressed. Exiting...")
+            #     break
 
-    while not rospy.is_shutdown():
-        # Get current state
-        ego_x = wpt_control.ego_x
-        ego_y = wpt_control.ego_y
-        ego_yaw = wpt_control.ego_yaw
-        ego_vx = wpt_control.ego_vx
+            if not hasattr(auto_control, 'x_list') or not auto_control.x_list:
+                rospy.loginfo("Waiting for path data...")
+                auto_control.rate.sleep()
+                continue
 
-        # Lateral error calculation (cross-track error, yaw error)
-        error_y, error_yaw = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, wpt_lookahead=wpt_control.wpt_look_ahead)
+            # Get current state
+            ego_x = auto_control.ego_x - 9.0
+            ego_y = auto_control.ego_y + 2.0
+            ego_yaw = auto_control.ego_yaw
+            ego_vx = auto_control.ego_vx
+            wpts_x = auto_control.x_list
+            wpts_y = auto_control.y_list
 
-        # Longitudinal error calculation (speed error)
-        error_v = wpt_control.target_speed - ego_vx
+            # rospy.loginfo("Loaded waypoints: %d" % len(wpts_x))
+            print("Loaded waypoints: %d, %d" % (len(wpts_x), len(wpts_y)))
 
-        # Log errors (errors w.r.t. the closest point)
-        error_y_log, _ = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, wpt_look_ahead=0)
-        error_y_data.append(abs(error_y_log))
-        error_v_data.append(abs(error_v))
+            # Lateral error calculation (cross-track error, yaw error)
+            error_y, error_yaw = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=auto_control.wpt_look_ahead)
 
-        # Control
-        steer_cmd = wpt_control.steer_control(error_y, error_yaw)
-        throttle_cmd = wpt_control.speed_control(error_v)
+            # Longitudinal error calculation (speed error)
+            # error_v = auto_control.target_speed - ego_vx
 
-        # Publish command
-        wpt_control.publish_command(steer_cmd, throttle_cmd)
+            # Log errors (errors w.r.t. the closest point)
+            error_y_log, _ = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=0)
+            error_y_data.append(abs(error_y_log))
+            # error_v_data.append(abs(error_v))
 
-        rospy.loginfo("Commands: (steer=%.3f, accel=%.3f). Errors: (CrossTrack=%.3f, Yaw=%.3f, Speed=%.3f). Ave. Errors ((CrossTrack=%.3f, Speed=%.3f)) ." %(steer_cmd, throttle_cmd, error_y, error_yaw, error_v, np.mean(error_y_data), np.mean(error_v_data)))
-        wpt_control.rate.sleep()
+            # Control
+            nearest_vx = min(K_values.keys(), key=lambda x: abs(x-ego_vx))
+            K = np.array(K_values[nearest_vx])
+            steer = -np.dot(K, np.array([error_y, error_yaw]))
+            steer_cmd = np.clip(steer, -auto_control.MAX_STEER, auto_control.MAX_STEER)
+            
+            speed_cmd = auto_control.target_speed
+
+            # Publish command
+            auto_control.publish_command(steer_cmd, speed_cmd)
+
+            # rospy.loginfo("Commands: (steer=%.3f, accel=%.3f). Errors: (CrossTrack=%.3f, Yaw=%.3f, Speed=%.3f). Ave. Errors ((CrossTrack=%.3f, Speed=%.3f)) ." %(steer_cmd, throttle_cmd, error_y, error_yaw, error_v, np.mean(error_y_data), np.mean(error_v_data)))
+            rospy.loginfo("Steering command: %.3f, Speed command: %.3f" %(steer_cmd, speed_cmd))
+
+            auto_control.rate.sleep()
+
+    except Exception as e:
+        rospy.logerr('Exception raised: {}'.format(e)) 
+
+    finally:
+        command = AckermannDrive()
+        command.steering_angle = 0
+        command.speed = 0
+        auto_control.pub_command.publish(command)
+
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
 
 
 if __name__ == '__main__':
+    settings    = termios.tcgetattr(sys.stdin)
     main()
