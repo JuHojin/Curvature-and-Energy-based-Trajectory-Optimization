@@ -6,7 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /A* Planner1
+        - /Uniform Path1
+        - /Final Path1
         - /Left Boundary1
         - /Right Boundary1
       Splitter Ratio: 0.5
@@ -170,8 +171,8 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
-      Color: 25; 255; 0
-      Enabled: true
+      Color: 78; 154; 6
+      Enabled: false
       Head Diameter: 0.05999999865889549
       Head Length: 0.10000000149011612
       Length: 0.30000001192092896
@@ -183,13 +184,13 @@ Visualization Manager:
         Y: 0
         Z: 0
       Pose Color: 255; 85; 255
-      Pose Style: Arrows
+      Pose Style: None
       Radius: 0.029999999329447746
       Shaft Diameter: 0.029999999329447746
       Shaft Length: 0.05999999865889549
       Topic: /move_base/MyGlobalPlanner/plan/a_star_plan
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -213,6 +214,52 @@ Visualization Manager:
       Topic: /move_base/MyGlobalPlanner/plan/post_smooth
       Unreliable: false
       Value: false
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 196; 160; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Uniform Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /move_base/MyGlobalPlanner/plan/uniform
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 3
+      Class: rviz/Path
+      Color: 239; 41; 41
+      Enabled: true
+      Head Diameter: 0.10000000149011612
+      Head Length: 0.10000000149011612
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Final Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: Arrows
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.05000000074505806
+      Shaft Length: 0.10000000149011612
+      Topic: /move_base/MyGlobalPlanner/plan/opt
+      Unreliable: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -260,7 +307,7 @@ Visualization Manager:
       Unreliable: false
       Value: false
     - Alpha: 1
-      Buffer Length: 1
+      Buffer Length: 3
       Class: rviz/Path
       Color: 92; 53; 102
       Enabled: true
@@ -283,7 +330,7 @@ Visualization Manager:
       Unreliable: false
       Value: true
     - Alpha: 1
-      Buffer Length: 1
+      Buffer Length: 3
       Class: rviz/Path
       Color: 92; 53; 102
       Enabled: true
@@ -303,29 +350,6 @@ Visualization Manager:
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/bnd_R
-      Unreliable: false
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz/Path
-      Color: 25; 255; 0
-      Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic: /move_base/MyGlobalPlanner/plan/uniform
       Unreliable: false
       Value: true
   Enabled: true
@@ -356,25 +380,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 48.88450241088867
+      Distance: 49.20427703857422
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.12184852361679077
-        Y: 5.905326843261719
-        Z: -0.11490859091281891
+        X: -0.9602569937705994
+        Y: 5.258086204528809
+        Z: -0.14348559081554413
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5647963285446167
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.708612442016602
+      Yaw: 4.713608741760254
     Saved: ~
 Window Geometry:
   Displays:
@@ -392,5 +416,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1280
-  X: 494
-  Y: 104
+  X: 939
+  Y: 27

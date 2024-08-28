@@ -7,3 +7,4 @@ src/cartographer_ros/
 src/.rosinstall
 src/.rosinstall.bak
 .catkin_workspace
+src/f1tenth-sim/rviz/default.rviz
