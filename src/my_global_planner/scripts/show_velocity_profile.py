@@ -15,7 +15,7 @@ def constraints_callback(msg):
     velocity_constraints = msg.data
 
 def plot_velocity_profile():
-    plt.ion()  # Enable interactive mode
+    # plt.ion()  # Enable interactive mode
     plt.figure()
 
     while not rospy.is_shutdown():

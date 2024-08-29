@@ -112,14 +112,12 @@ double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, 
     return radius;
 }
 
-void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, 
-                                    std::vector<double>& curvature,
-                                    double& curvature_square_sum,
-                                    double& max_curvature) {
+std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
     int numPoints = path.size();
-    curvature.resize(numPoints);
-    curvature_square_sum = 0.0;
-    max_curvature = 0.0;
+    Eigen::VectorXd curvature(numPoints);
+    curvature.setZero();
+    double curvature_square_sum = 0.0;
+    double max_curvature = 0.0;
 
     for (int j = 1; j < numPoints - 1; ++j) {
         double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
@@ -129,6 +127,21 @@ void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path,
             max_curvature = curvature[j];
         }
     }
+    
+    return {curvature, curvature_square_sum, max_curvature};
+}
+
+Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
+    int numPoints = path.size();
+    Eigen::VectorXd curvature(numPoints);
+    curvature.setZero();
+
+    for (int j = 1; j < numPoints - 1; ++j) {
+        double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
+        curvature[j] = 1.0 / R;
+    }
+    
+    return curvature;
 }
 
 std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::PoseStamped>& plan) {

@@ -97,24 +97,10 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
     nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
     publishPath(plan_publisher_final, final_plan_world);
-
-    // Get curvature using turning radius, and get and show velocity profile
-    double max_vel = 1.0;
-    double max_ax = 0.5;
-    double max_ay = 0.5;
-    double init_velocity = 0.2;
-
-    Eigen::VectorXd curvature(opt_path.size());
-    double curvature_square_sum = 0.0;
-    double max_curvature = 0.0;
-    std::vector<double> curvature_vec(opt_path.size());
     
-    getCurvatureUsingTurningRadius(opt_path, curvature_vec, curvature_square_sum, max_curvature);
-    for (size_t i = 0; i < curvature_vec.size(); ++i) {
-        curvature(i) = curvature_vec[i];
-    }
-
-    auto velocity_result = getVelocityProfile(curvature, init_velocity, max_vel, max_ax, max_ay);
+    // Velocity Profile
+    Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(opt_path);
+    auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
     Eigen::VectorXd velocity_profile = velocity_result.first;
     Eigen::MatrixXd velocity_constraints = velocity_result.second;
 

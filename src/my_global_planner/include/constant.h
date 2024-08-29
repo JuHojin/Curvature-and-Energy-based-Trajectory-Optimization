@@ -14,6 +14,12 @@ namespace Constant {
     constexpr double CURVATURE_BOUND = 0.7;
     constexpr unsigned int MAX_OPT_ITER = 10;
 
+    // Velocity Profile
+    constexpr double MAX_VEL = 20;
+    constexpr double MAX_AX = 1;
+    constexpr double MAX_AY = 0.5;
+    constexpr double INIT_VELOCITY = 0;
+
     // Map: Obstacle
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 160;
     constexpr unsigned char OBSTACLE_INFLATION = 200;
