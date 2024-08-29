@@ -24,6 +24,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         ROS_INFO("Optimzation Step [%d]", i+1);
         if (i != 0) {
             path = uniformSpacing(new_path);
+            path = adaptiveSpacing(new_path);
         }
 
         Eigen::MatrixXd A = getSystemMatrix(path);
@@ -38,12 +39,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         publishPath(plan_publisher_bnd_L, left_bnd_world);
         publishPath(plan_publisher_bnd_R, right_bnd_world);
 
-         // Calculate start angle
+         // Calculate start angle and end angle
         Eigen::Vector2d start_segment = path[1] - path[0];
-        double start_angle = std::atan2(start_segment.y(), start_segment.x());
-
-        // Calculate end angle
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
+        double start_angle = std::atan2(start_segment.y(), start_segment.x());
         double end_angle = std::atan2(end_segment.y(), end_segment.x());
 
         // Alpha

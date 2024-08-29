@@ -8,7 +8,9 @@ namespace Constant {
     constexpr unsigned int DEV_DOT = 1;
 
     // Spacing
-    constexpr unsigned int UNIFORM_STEP = 8;
+    constexpr unsigned int UNIFORM_STEP = 10;
+    constexpr unsigned int ADAPTIVE_MIN_STEP = 7;
+    constexpr unsigned int ADAPTIVE_MAX_STEP = 20;
 
     // Minimum curvature optimization
     constexpr double CURVATURE_BOUND = 0.7;

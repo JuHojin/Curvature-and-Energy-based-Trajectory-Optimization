@@ -22,7 +22,8 @@ std::vector<geometry_msgs::PoseStamped> postSmooth(std::vector<geometry_msgs::Po
 // Spacing
 std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& path);
-std::vector<geometry_msgs::PoseStamped> adaptiveSpacing(const std::vector<geometry_msgs::PoseStamped>& plan);
+std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path);
+double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_radius);
 
 // Velocity profile
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);

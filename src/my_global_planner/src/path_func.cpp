@@ -247,8 +247,79 @@ std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& 
     return new_path;
 }
 
-std::vector<geometry_msgs::PoseStamped> adaptiveSpacing(const std::vector<geometry_msgs::PoseStamped>& plan) {
+std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path) {
+    std::vector<Eigen::Vector2d> new_path;
+    new_path.push_back(path[0]);
 
+    for (size_t i = 1; i < path.size(); ++i) {
+        Eigen::Vector2d start = new_path.back();
+        Eigen::Vector2d end = path[i];
+        double dist = (end - start).norm();
+
+        double min_obstacle_distance = get_min_obstacle_distance(start, Constant::ADAPTIVE_MAX_STEP);
+
+        // Determine sampling spacing
+        double new_spacing;
+        if (min_obstacle_distance != -1 && min_obstacle_distance < Constant::ADAPTIVE_MAX_STEP) {
+            if (min_obstacle_distance < Constant::ADAPTIVE_MIN_STEP) {
+                new_spacing = Constant::ADAPTIVE_MIN_STEP;
+            } else {
+                new_spacing = min_obstacle_distance;
+            }
+        } else {
+            new_spacing = Constant::ADAPTIVE_MAX_STEP;
+        }
+
+        std::cout << "Min obstacle distance: " << min_obstacle_distance << ", New spacing: " << new_spacing << std::endl;
+
+        while (dist > new_spacing) {
+            Eigen::Vector2d direction = (end - start).normalized();
+            start = start + direction * new_spacing;
+            new_path.push_back(start);
+            dist = (end - start).norm();
+        }
+    }
+    new_path.push_back(path.back());  // Ensure the last point is included
+
+    return new_path;
+}
+
+double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_radius) {
+    unsigned int start_x = static_cast<unsigned int>(start.x());
+    unsigned int start_y = static_cast<unsigned int>(start.y());
+
+    unsigned int costmap_width = costmap->getSizeInCellsX();
+    unsigned int costmap_height = costmap->getSizeInCellsY();
+    double resolution = costmap->getResolution();
+
+    std::vector<double> distances;
+
+    // Loop through the search area around the point
+    for (int dx = -static_cast<int>(searching_radius); dx <= static_cast<int>(searching_radius); ++dx) {
+        for (int dy = -static_cast<int>(searching_radius); dy <= static_cast<int>(searching_radius); ++dy) {
+            int x = start_x + dx;
+            int y = start_y + dy;
+
+            // Check if the point is within the costmap bounds
+            if (x >= 0 && x < costmap_width && y >= 0 && y < costmap_height) {
+                unsigned char cost = costmap->getCost(x, y);
+                
+                // Check if the cell is an obstacle (considering a threshold)
+                if (cost >= costmap_2d::LETHAL_OBSTACLE) {
+                    double dist = std::sqrt(std::pow(dx, 2) + std::pow(dy, 2));
+                    if (dist <= searching_radius) {
+                        distances.push_back(dist);
+                    }
+                }
+            }
+        }
+    }
+
+    if (distances.empty()) {
+        return -1;
+    } else {
+        return *std::min_element(distances.begin(), distances.end());
+    }
 }
 
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
