@@ -12,6 +12,7 @@
 #include <cmath>
 #include <limits>
 #include <tf/tf.h>
+#include <numeric>
 
 namespace my_global_planner {
 
@@ -19,11 +20,13 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     
     std::vector<Eigen::Vector2d> new_path;
     Eigen::VectorXd alpha;
-    
+    std::vector<double> travel_times;
+
+    path = adaptiveSpacing(path);
+
     for (int i = 0; i < max_iter; ++i) {
-        ROS_INFO("Optimzation Step [%d]", i+1);
+        ROS_INFO("Optimization Step [%d]", i + 1);
         if (i != 0) {
-            path = uniformSpacing(new_path);
             path = adaptiveSpacing(new_path);
         }
 
@@ -39,13 +42,13 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         publishPath(plan_publisher_bnd_L, left_bnd_world);
         publishPath(plan_publisher_bnd_R, right_bnd_world);
 
-         // Calculate start angle and end angle
+        // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
         double start_angle = std::atan2(start_segment.y(), start_segment.x());
         double end_angle = std::atan2(end_segment.y(), end_segment.x());
 
-        // Alpha
+        // Alpha calculation
         auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle);
         alpha = result.first;
         int success = result.second;
@@ -56,14 +59,31 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
             publishPath(plan_publisher_opt, new_path_world);
         } else {
-            ROS_WARN("Optimization Fail at step[%d]",i+1);
+            ROS_WARN("Optimization Failed at step [%d]", i + 1);
             break;
         }
-        
+
+        // Get curvature and velocity profile
+        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(new_path);
+        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        Eigen::VectorXd velocity_profile = velocity_result.first;
+
+        // Travel time
+        double travel_time = getTravelTime(new_path, velocity_profile);
+        ROS_INFO("Optimization Step [%d] Travel Time: %f", i + 1, travel_time);
+        travel_times.push_back(travel_time);
+
+        // Compare current travel time with previous iteration
+        if (i >= 2 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
+            ROS_INFO("Current travel time is longer than the previous one or is NaN. Reverting to path at step [%d]", i);
+            new_path = adaptiveSpacing(path); // Revert to the previous path
+            break;
+        }
     }
 
     return new_path;
 }
+
 
 Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     int numPoints = path.size();
@@ -212,6 +232,24 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
     Eigen::VectorXd curvature = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
 
     return curvature;
+}
+
+double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::VectorXd& velocity_profile) {
+    std::vector<Eigen::Vector2d> deltas;
+    for (size_t i = 1; i < path.size(); ++i) {
+        deltas.push_back(path[i] - path[i-1]);
+    }
+
+    std::vector<double> distances(deltas.size());
+    for (size_t i = 0; i < deltas.size(); ++i) {
+        distances[i] = deltas[i].norm();
+    }
+
+    double travel_length = std::accumulate(distances.begin(), distances.end(), 0.0);
+    double avg_vel = velocity_profile.mean();
+    double travel_time = travel_length / avg_vel;
+
+    return travel_time;
 }
 
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors) {

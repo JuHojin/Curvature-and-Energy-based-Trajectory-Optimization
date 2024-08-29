@@ -195,7 +195,7 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
             current.pose.position.y += dy * Constant::UNIFORM_STEP;
 
             new_plan.push_back(current);
-            ROS_INFO("current (%f, %f)", current.pose.position.x, current.pose.position.y);
+            // ROS_INFO("current (%f, %f)", current.pose.position.x, current.pose.position.y);
             dist = std::hypot(next.pose.position.x - current.pose.position.x, next.pose.position.y - current.pose.position.y);
         }
         // Include corner point
@@ -270,7 +270,7 @@ std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>&
             new_spacing = Constant::ADAPTIVE_MAX_STEP;
         }
 
-        std::cout << "Min obstacle distance: " << min_obstacle_distance << ", New spacing: " << new_spacing << std::endl;
+        // std::cout << "Min obstacle distance: " << min_obstacle_distance << ", New spacing: " << new_spacing << std::endl;
 
         while (dist > new_spacing) {
             Eigen::Vector2d direction = (end - start).normalized();

@@ -4,8 +4,8 @@
 
 namespace Constant {
     // Boundary
-    constexpr unsigned int DEV_MAX = 10;
-    constexpr unsigned int DEV_DOT = 1;
+    constexpr unsigned int DEV_MAX = 15;
+    constexpr unsigned int DEV_DOT = 2;
 
     // Spacing
     constexpr unsigned int UNIFORM_STEP = 10;
