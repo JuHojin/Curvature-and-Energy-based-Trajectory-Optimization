@@ -157,6 +157,28 @@ Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d
     return curvature;
 }
 
+Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path) {
+    int numPoints = path.poses.size(); // Use .poses.size() to get the number of points in the path
+
+    Eigen::VectorXd curvature(numPoints);
+    curvature.setZero();
+
+    for (int j = 1; j < numPoints - 1; ++j) {
+        // Extract the previous, current, and next points from the path
+        Eigen::Vector2d prev_point(path.poses[j - 1].pose.position.x, path.poses[j - 1].pose.position.y);
+        Eigen::Vector2d current_point(path.poses[j].pose.position.x, path.poses[j].pose.position.y);
+        Eigen::Vector2d next_point(path.poses[j + 1].pose.position.x, path.poses[j + 1].pose.position.y);
+
+        // Calculate the turning radius
+        double R = getTurningRadius(prev_point, current_point, next_point);
+
+        // Calculate the curvature (1 / radius)
+        curvature[j] = 1.0 / R;
+    }
+
+    return curvature;
+}
+
 std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::PoseStamped>& plan) {
     int i = 0;
     std::vector<geometry_msgs::PoseStamped> new_plan;

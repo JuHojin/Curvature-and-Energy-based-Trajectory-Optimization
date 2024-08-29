@@ -16,9 +16,9 @@ namespace Constant {
     constexpr double CURVATURE_BOUND = 0.7;
     constexpr unsigned int MAX_OPT_ITER = 10;
 
-    // Velocity Profile
-    constexpr double MAX_VEL = 20;
-    constexpr double MAX_AX = 1;
+    // Velocity Profile [SI]
+    constexpr double MAX_VEL = 20 / 3.6;
+    constexpr double MAX_AX = 0.05;
     constexpr double MAX_AY = 0.5;
     constexpr double INIT_VELOCITY = 0;
 

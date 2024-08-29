@@ -16,6 +16,7 @@ Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2
 double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);
 std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
+Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path);
 
 // Post Smoothing
 std::vector<geometry_msgs::PoseStamped> postSmooth(std::vector<geometry_msgs::PoseStamped>& plan);

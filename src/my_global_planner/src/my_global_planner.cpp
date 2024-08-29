@@ -99,7 +99,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
     publishPath(plan_publisher_final, final_plan_world);
     
     // Velocity Profile
-    Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(opt_path);
+    Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
     auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
     Eigen::VectorXd velocity_profile = velocity_result.first;
     Eigen::MatrixXd velocity_constraints = velocity_result.second;
