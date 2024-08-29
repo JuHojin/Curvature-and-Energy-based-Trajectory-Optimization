@@ -57,7 +57,6 @@ bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStam
 
     for (; n > 0; --n) {
         if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION)
-        // if (costmap->getCost(start_x, start_y) >= 200)
             return false;
 
         if (x_error > 0) {
@@ -98,6 +97,38 @@ bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
         }
     }
     return true;
+}
+
+double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
+    // Calculate turning radius based on three points
+    double a = (pt2 - pt1).norm();
+    double b = (pt3 - pt2).norm();
+    double c = (pt3 - pt1).norm();
+
+    double s = (a + b + c) / 2.0;
+    double area = std::sqrt(s * (s - a) * (s - b) * (s - c));
+
+    double radius = (a * b * c) / (4.0 * area);
+    return radius;
+}
+
+void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, 
+                                    std::vector<double>& curvature,
+                                    double& curvature_square_sum,
+                                    double& max_curvature) {
+    int numPoints = path.size();
+    curvature.resize(numPoints);
+    curvature_square_sum = 0.0;
+    max_curvature = 0.0;
+
+    for (int j = 1; j < numPoints - 1; ++j) {
+        double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
+        curvature[j] = 1.0 / R;
+        curvature_square_sum += std::pow(curvature[j], 2);
+        if (curvature[j] > max_curvature) {
+            max_curvature = curvature[j];
+        }
+    }
 }
 
 std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::PoseStamped>& plan) {
@@ -205,6 +236,62 @@ std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& 
 
 std::vector<geometry_msgs::PoseStamped> adaptiveSpacing(const std::vector<geometry_msgs::PoseStamped>& plan) {
 
+}
+
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
+
+    size_t len_path = curvature.size();
+
+    // Initialize the maximum velocity array with the constant max_vel for all path points
+    Eigen::VectorXd max_vel_list = Eigen::VectorXd::Ones(len_path) * max_vel;
+    Eigen::VectorXd lat_acc = Eigen::VectorXd::Zero(len_path);
+
+    // Compute the lateral acceleration constraints
+    for (size_t i = 0; i < len_path; ++i) {
+        double k = curvature(i);
+        if (k < 1e-7) {
+            k = 1e-7;
+        }
+        double v = std::sqrt(max_ay / k);
+        // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
+        v = std::min(v, max_vel + 1);
+        lat_acc(i) = v;
+    }
+
+    Eigen::MatrixXd velocity_constraints(2, len_path);
+    velocity_constraints.row(0) = max_vel_list;
+    velocity_constraints.row(1) = lat_acc;
+
+    // Compute the final velocity profile by taking the minimum of max velocity and lateral acceleration constraints
+    Eigen::VectorXd velocity_profile = velocity_constraints.colwise().minCoeff();
+
+    // Apply forward acceleration constraint
+    double v = init_velocity;  // Initial velocity
+    velocity_profile(0) = v;
+    for (size_t i = 1; i < len_path; ++i) {
+        double next_v = std::sqrt(v * v + 2 * max_ax * Constant::UNIFORM_STEP);
+        if (next_v < velocity_profile(i)) {
+            velocity_profile(i) = next_v;
+            v = next_v;
+        } else {
+            v = velocity_profile(i);
+        }
+    }
+
+    // Apply backward acceleration constraint
+    v = 0;  // Final velocity
+    velocity_profile(len_path - 1) = v;
+    for (int i = len_path - 2; i >= 0; --i) {
+        double next_v = std::sqrt(v * v + 2 * max_ax * Constant::UNIFORM_STEP);
+        if (next_v < velocity_profile(i)) {
+            velocity_profile(i) = next_v;
+            v = next_v;
+        } else {
+            v = velocity_profile(i);
+        }
+    }
+
+    return std::make_pair(velocity_profile, velocity_constraints);
 }
 
 } // namespace my_global_planner

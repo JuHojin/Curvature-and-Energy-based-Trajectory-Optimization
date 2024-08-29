@@ -10,6 +10,7 @@
 #include <tf/tf.h>
 #include <nav_msgs/Path.h>
 #include <cmath>
+#include <std_msgs/Float64MultiArray.h>
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -39,6 +40,8 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_bnd_L = private_nh.advertise<nav_msgs::Path>("plan/bnd_L", 1);
     plan_publisher_bnd_R = private_nh.advertise<nav_msgs::Path>("plan/bnd_R", 1);
     plan_publisher_opt = private_nh.advertise<nav_msgs::Path>("plan/opt", 1);
+    profile_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_profile", 10);
+    constraints_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_constraints", 10);
     plan_publisher_final = private_nh.advertise<nav_msgs::Path>("plan/final", 1);
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
@@ -89,11 +92,46 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
     // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
     std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
-    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, 10);
+    std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER);
     std::vector<geometry_msgs::PoseStamped> final_plan = convertVector2dToPoseStamped(opt_path);
 
     nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
     publishPath(plan_publisher_final, final_plan_world);
+
+    // Get curvature using turning radius, and get and show velocity profile
+    double max_vel = 1.0;
+    double max_ax = 0.5;
+    double max_ay = 0.5;
+    double init_velocity = 0.2;
+
+    Eigen::VectorXd curvature(opt_path.size());
+    double curvature_square_sum = 0.0;
+    double max_curvature = 0.0;
+    std::vector<double> curvature_vec(opt_path.size());
+    
+    getCurvatureUsingTurningRadius(opt_path, curvature_vec, curvature_square_sum, max_curvature);
+    for (size_t i = 0; i < curvature_vec.size(); ++i) {
+        curvature(i) = curvature_vec[i];
+    }
+
+    auto velocity_result = getVelocityProfile(curvature, init_velocity, max_vel, max_ax, max_ay);
+    Eigen::VectorXd velocity_profile = velocity_result.first;
+    Eigen::MatrixXd velocity_constraints = velocity_result.second;
+
+    // Publish velocity profile and constraints for plotting in Python node
+    std_msgs::Float64MultiArray profile_msg;
+    for (int i = 0; i < velocity_profile.size(); ++i) {
+        profile_msg.data.push_back(velocity_profile(i));
+    }
+    profile_publisher.publish(profile_msg);
+
+    std_msgs::Float64MultiArray constraints_msg;
+    for (int i = 0; i < velocity_constraints.rows(); ++i) {
+        for (int j = 0; j < velocity_constraints.cols(); ++j) {
+            constraints_msg.data.push_back(velocity_constraints(i, j));
+        }
+    }
+    constraints_publisher.publish(constraints_msg);
 
     plan = final_plan_world.poses;
 
@@ -104,6 +142,24 @@ void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg) {
     path_msg.header.frame_id = "map";
     path_msg.header.stamp = ros::Time::now();    
     publisher.publish(path_msg);
+}
+
+void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile) {
+    std_msgs::Float64MultiArray profile_msg;
+    for (int i = 0; i < velocity_profile.size(); ++i) {
+        profile_msg.data.push_back(velocity_profile(i));
+    }
+    profile_pub.publish(profile_msg);
+}
+
+void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints) {
+    std_msgs::Float64MultiArray constraints_msg;
+    for (int i = 0; i < velocity_constraints.rows(); ++i) {
+        for (int j = 0; j < velocity_constraints.cols(); ++j) {
+            constraints_msg.data.push_back(velocity_constraints(i, j));
+        }
+    }
+    constraints_pub.publish(constraints_msg);
 }
 
 nav_msgs::Path producePathMapToWorld(std::vector<geometry_msgs::PoseStamped>& plan) {

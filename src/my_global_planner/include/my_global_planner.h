@@ -27,6 +27,9 @@ extern ros::Publisher plan_publisher_bnd_R;
 extern ros::Publisher plan_publisher_opt;
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
+void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile);
+void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints);
+
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& plan);
@@ -51,6 +54,9 @@ private:
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
     ros::Publisher plan_publisher_final;
+    ros::Publisher profile_publisher;
+    ros::Publisher constraints_publisher;
+    
 };
 
 } // namespace my_global_planner

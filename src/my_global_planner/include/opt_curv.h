@@ -20,9 +20,6 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path);
 std::vector<Eigen::Vector2d> getNormalVectors(const std::vector<Eigen::Vector2d>& path);
 
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle);
-double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);
-void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, std::vector<double>& curvature, double& curvature_square_sum, double& max_curvature);
-
 
 // Boundaries
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors);

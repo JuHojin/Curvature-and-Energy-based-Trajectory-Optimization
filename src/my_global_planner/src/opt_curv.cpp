@@ -12,7 +12,6 @@
 #include <cmath>
 #include <limits>
 #include <tf/tf.h>
-// #include "spline/src/spline.h"
 
 namespace my_global_planner {
 
@@ -20,12 +19,6 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     
     std::vector<Eigen::Vector2d> new_path;
     Eigen::VectorXd alpha;
-
-    // std::ostringstream oss;
-    // for (size_t i = 0; i < path.size(); ++i) {
-    //     oss << " original path: (" << path[i].x() << ", " << path[i].y() << ")\n";
-    // }
-    // ROS_INFO_STREAM(oss.str());
     
     for (int i = 0; i < max_iter; ++i) {
         ROS_INFO("Optimzation Step [%d]", i+1);
@@ -222,38 +215,6 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
     return curvature;
 }
 
-double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
-    // Calculate turning radius based on three points
-    double a = (pt2 - pt1).norm();
-    double b = (pt3 - pt2).norm();
-    double c = (pt3 - pt1).norm();
-
-    double s = (a + b + c) / 2.0;
-    double area = std::sqrt(s * (s - a) * (s - b) * (s - c));
-
-    double radius = (a * b * c) / (4.0 * area);
-    return radius;
-}
-
-void getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path, 
-                                    std::vector<double>& curvature,
-                                    double& curvature_square_sum,
-                                    double& max_curvature) {
-    int numPoints = path.size();
-    curvature.resize(numPoints);
-    curvature_square_sum = 0.0;
-    max_curvature = 0.0;
-
-    for (int j = 1; j < numPoints - 1; ++j) {
-        double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
-        curvature[j] = 1.0 / R;
-        curvature_square_sum += std::pow(curvature[j], 2);
-        if (curvature[j] > max_curvature) {
-            max_curvature = curvature[j];
-        }
-    }
-}
-
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors) {
     Boundaries boundaries;
     size_t n = path.size();
@@ -295,6 +256,7 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
     return boundaries;
 }
 
+// version 1
 // double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
 //     int x = point.x();
 //     int y = point.y();
@@ -314,33 +276,7 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
 //     return Constant::DEV_MAX; // Return the maximum distance if no obstacles are encountered
 // }
 
-double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
-    int x = point.x();
-    int y = point.y();
-    
-    int last_valid_d = Constant::DEV_MAX;
-
-    for (int d = Constant::DEV_MAX; d > 0; --d) {
-        int nx = x + std::round(dx * d);
-        int ny = y + std::round(dy * d);
-        
-        if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
-            // If we hit a boundary, return the last valid distance
-            return last_valid_d;
-        }
-
-        if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {
-            // If we hit an obstacle, reduce the distance and continue
-            last_valid_d = d - 1;
-        } else {
-            // If no obstacle is found, return the last valid distance
-            return last_valid_d;
-        }
-    }
-
-    return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
-}
-
+// version 2
 // double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
 //     int x = point.x();
 //     int y = point.y();
@@ -367,6 +303,34 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
 
 //     return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
 // }
+
+// version 3
+double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
+    int x = point.x();
+    int y = point.y();
+    
+    int last_valid_d = Constant::DEV_MAX;
+
+    for (int d = Constant::DEV_MAX; d > 0; --d) {
+        int nx = x + std::round(dx * d);
+        int ny = y + std::round(dy * d);
+        
+        if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
+            // If we hit a boundary, return the last valid distance
+            return last_valid_d;
+        }
+
+        if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {
+            // If we hit an obstacle, reduce the distance and continue
+            last_valid_d = d - 1;
+        } else {
+            // If no obstacle is found, return the last valid distance
+            return last_valid_d;
+        }
+    }
+
+    return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
+}
 
 void constrainDeviationChange(std::vector<double>& dev_list) {
     // Constrain forward direction
@@ -425,7 +389,6 @@ csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat) {
 
     return csc_matrix(mat.rows(), mat.cols(), nonzeros, values, row_indices, col_pointers);
 }
-
 
 std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
                                      std::vector<double> left_dev_bnd,
@@ -584,20 +547,26 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     u.segment(num_points, num_points) = curv_constraints_ge;
     l.segment(num_points, num_points) = curv_constraints_le;
 
-    // Convert Eigen matrices/vectors to string for ROS_INFO
-    std::stringstream ss_E, ss_u, ss_l;
-    // ss_E << E;
-    ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
-    ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
 
-    // ROS_INFO_STREAM to output the contents
-    // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
-    ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
-    ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
 
-    // Check convexity by inspecting the eigenvalues of H
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
-    ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
+
+    // // Convert Eigen matrices/vectors to string for ROS_INFO
+    // std::stringstream ss_E, ss_u, ss_l;
+    // // ss_E << E;
+    // ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
+    // ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
+
+    // // ROS_INFO_STREAM to output the contents
+    // // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
+    // ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
+    // ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
+
+    // // Check convexity by inspecting the eigenvalues of H
+    // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
+    // ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
+
+
+
 
     // Solve QP
     Eigen::SparseMatrix<double> H_sparse = H.sparseView();
@@ -658,14 +627,14 @@ std::vector<Eigen::Vector2d> getPathMinCurvature(const std::vector<Eigen::Vector
     for (size_t i = 0; i < path.size(); ++i) {
         new_path[i] = path[i] + alpha(i) * normal_vectors[i];
         
-        std::ostringstream oss;
-        oss << "Iteration " << i << ":\n"
-            << "  path[" << i << "]: (" << path[i].x() << ", " << path[i].y() << ")\n"
-            << "  normal_vectors[" << i << "]: (" << normal_vectors[i].x() << ", " << normal_vectors[i].y() << ")\n"
-            << "  alpha[" << i << "]: " << alpha(i) << "\n"
-            << "  new_path[" << i << "]: (" << new_path[i].x() << ", " << new_path[i].y() << ")";
+        // std::ostringstream oss;
+        // oss << "Iteration " << i << ":\n"
+        //     << "  path[" << i << "]: (" << path[i].x() << ", " << path[i].y() << ")\n"
+        //     << "  normal_vectors[" << i << "]: (" << normal_vectors[i].x() << ", " << normal_vectors[i].y() << ")\n"
+        //     << "  alpha[" << i << "]: " << alpha(i) << "\n"
+        //     << "  new_path[" << i << "]: (" << new_path[i].x() << ", " << new_path[i].y() << ")";
 
-        ROS_INFO_STREAM(oss.str());
+        // ROS_INFO_STREAM(oss.str());
     }
 
     return new_path;
