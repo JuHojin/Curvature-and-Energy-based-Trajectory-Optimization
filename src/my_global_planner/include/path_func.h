@@ -17,7 +17,7 @@ std::vector<geometry_msgs::PoseStamped> postSmooth(std::vector<geometry_msgs::Po
 
 // Spacing
 std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometry_msgs::PoseStamped>& plan);
-std::vector<Eigen::Vector2d> uniformSpacingVector2d(const std::vector<Eigen::Vector2d>& path);
+std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& path);
 std::vector<geometry_msgs::PoseStamped> adaptiveSpacing(const std::vector<geometry_msgs::PoseStamped>& plan);
 
 } // namespace my_global_planner

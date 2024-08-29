@@ -129,7 +129,7 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
     new_plan.push_back(plan[0]);
 
     size_t i = 1;
-    while (i < plan.size() - 1) {
+    while (i < plan.size()) {
         geometry_msgs::PoseStamped current = new_plan.back();
         const geometry_msgs::PoseStamped& next = plan[i];
         double dist = std::hypot(next.pose.position.x - current.pose.position.x, next.pose.position.y - current.pose.position.y);
@@ -167,7 +167,7 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
     return new_plan;
 }
 
-std::vector<Eigen::Vector2d> uniformSpacingVector2d(const std::vector<Eigen::Vector2d>& path) {
+std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& path) {
     if (path.empty()) {
         std::cerr << "Uniform spacing failed: Path is empty." << std::endl;
         return path;
@@ -177,7 +177,7 @@ std::vector<Eigen::Vector2d> uniformSpacingVector2d(const std::vector<Eigen::Vec
     new_path.push_back(path.front());
 
     size_t i = 1;
-    while (i < path.size() - 1) {
+    while (i < path.size()) {
         Eigen::Vector2d current = new_path.back();
         const Eigen::Vector2d& next = path[i];
         double dist = (next - current).norm();

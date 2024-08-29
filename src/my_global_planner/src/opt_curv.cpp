@@ -30,7 +30,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     for (int i = 0; i < max_iter; ++i) {
         ROS_INFO("Optimzation Step [%d]", i+1);
         if (i != 0) {
-            path = uniformSpacingVector2d(new_path);
+            path = uniformSpacing(new_path);
         }
 
         Eigen::MatrixXd A = getSystemMatrix(path);
