@@ -60,6 +60,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             publishPath(plan_publisher_opt, new_path_world);
         } else {
             ROS_WARN("Optimization Failed at step [%d]", i + 1);
+            new_path = adaptiveSpacing(path);
             break;
         }
 
@@ -349,12 +350,14 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
     int last_valid_d = Constant::DEV_MAX;
 
     for (int d = Constant::DEV_MAX; d > 0; --d) {
-        int nx = x + std::round(dx * d);
-        int ny = y + std::round(dy * d);
-        
+        // int nx = x + std::round(dx * d);
+        // int ny = y + std::round(dy * d);
+        int nx = x + dx * d;
+        int ny = y + dy * d;
+
         if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
             // If we hit a boundary, return the last valid distance
-            return last_valid_d;
+            last_valid_d = d - 1;
         }
 
         if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {

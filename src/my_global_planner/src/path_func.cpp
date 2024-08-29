@@ -99,17 +99,30 @@ bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
     return true;
 }
 
+Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
+    double ax = pt1.x(), ay = pt1.y();
+    double bx = pt2.x(), by = pt2.y();
+    double cx = pt3.x(), cy = pt3.y();
+
+    double d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    if (d == 0) {
+        return Eigen::Vector2d(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity());
+    } else {
+        double ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+        double uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+        return Eigen::Vector2d(ux, uy);
+    }
+}
+
 double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
-    // Calculate turning radius based on three points
-    double a = (pt2 - pt1).norm();
-    double b = (pt3 - pt2).norm();
-    double c = (pt3 - pt1).norm();
+    Eigen::Vector2d center_point = getCircumcenter(pt1, pt2, pt3);
 
-    double s = (a + b + c) / 2.0;
-    double area = std::sqrt(s * (s - a) * (s - b) * (s - c));
+    if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
+        return std::numeric_limits<double>::infinity();
+    }
 
-    double radius = (a * b * c) / (4.0 * area);
-    return radius;
+    double R = (pt2 - center_point).norm();
+    return R;
 }
 
 std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
