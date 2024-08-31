@@ -8,7 +8,7 @@ namespace Constant {
     constexpr unsigned int DEV_DOT = 1;
 
     // Spacing
-    constexpr unsigned int UNIFORM_STEP = 10;
+    constexpr unsigned int UNIFORM_STEP = 5;
     constexpr unsigned int ADAPTIVE_MIN_STEP = 5;
     constexpr unsigned int ADAPTIVE_MAX_STEP = 13;
 
@@ -21,6 +21,9 @@ namespace Constant {
     constexpr double MAX_AX = 0.05;
     constexpr double MAX_AY = 0.5;
     constexpr double INIT_VELOCITY = 0;
+
+    // Pin point
+    constexpr int MIDPOINT_SELECT = 3;
 
     // Map: Obstacle
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 150;

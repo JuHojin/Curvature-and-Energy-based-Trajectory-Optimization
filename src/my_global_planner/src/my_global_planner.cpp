@@ -73,7 +73,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
         ROS_INFO("Initial A* planning is successful.");
 
         publishPath(plan_publisher_a_star, a_star_plan_world);
-        plan = a_star_plan_world.poses;
+        // plan = a_star_plan_world.poses;
     } else {
         ROS_WARN("Initial A* planning failed.");
     }
@@ -88,12 +88,13 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
     nav_msgs::Path uniform_plan_world = producePathMapToWorld(uniform_plan);
     publishPath(plan_publisher_uniform, uniform_plan_world);
 
-    // TBD: Adaptive path spacing
-
     // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
     std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
     std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER);
+
+    std::pair<std::vector<int>, std::vector<Eigen::Vector2d>> pin_point_select(opt_path);
     std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+
 
     std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
 
@@ -193,6 +194,96 @@ std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::
     updateOrientatoin(plan);
 
     return plan;
+}
+
+std::pair<std::vector<int>, std::vector<Eigen::Vector2d>> pin_point_select(const std::vector<Eigen::Vector2d>& path) {
+    std::vector<int> pin_point_indices;
+    std::vector<Eigen::Vector2d> pin_point_list;
+    std::vector<int> min_points_indices;
+    std::vector<double> distances(path.size() - 1);
+
+    // Calculate distances between consecutive points
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        distances[i] = (path[i + 1] - path[i]).norm();
+    }
+
+    std::cout << "distance length: " << distances.size() << std::endl;
+    double average_distance = std::accumulate(distances.begin(), distances.end(), 0.0) / distances.size() * 0.8;  // Tighter bound
+
+    // Find indices where distance is below average and group them
+    std::vector<int> below_avg_indices;
+    for (size_t i = 0; i < distances.size(); ++i) {
+        if (distances[i] < average_distance) {
+            below_avg_indices.push_back(i);
+        }
+    }
+
+    std::vector<std::vector<int>> sections;
+    std::vector<int> current_section;
+
+    for (size_t i = 0; i < below_avg_indices.size(); ++i) {
+        if (i > 0 && below_avg_indices[i] != below_avg_indices[i - 1] + 1) {
+            sections.push_back(current_section);
+            current_section.clear();
+        }
+        current_section.push_back(below_avg_indices[i]);
+    }
+    if (!current_section.empty()) {
+        sections.push_back(current_section);
+    }
+
+    int method = Constant::MIDPOINT_SELECT;
+
+    // Method 1: midpoint of each section
+    if (method == 1) {
+        for (const auto& sec : sections) {
+            if (!sec.empty()) {
+                pin_point_indices.push_back((sec.front() + sec.back()) / 2);
+            }
+        }
+    }
+
+    // Method 2: midpoint of minimum points of each section
+    else if (method == 2) {
+        for (const auto& sec : sections) {
+            if (!sec.empty()) {
+                double min_distance = *std::min_element(sec.begin(), sec.end(), [&](int a, int b) {
+                    return distances[a] < distances[b];
+                });
+                int middle_index = sec[std::distance(distances.begin(), std::find(distances.begin(), distances.end(), min_distance))];
+                pin_point_indices.push_back(middle_index);
+            }
+        }
+    }
+    
+    // Method 3: weighted point
+    else if (method == 3) {
+        for (const auto& sec : sections) {
+            if (!sec.empty()) {
+                std::vector<double> section_distances(sec.size());
+                for (size_t j = 0; j < sec.size(); ++j) {
+                    section_distances[j] = distances[sec[j]];
+                }
+                std::vector<double> weights(sec.size());
+                std::transform(section_distances.begin(), section_distances.end(), weights.begin(), [](double d) {
+                    return 1.0 / (std::pow(d, 3) + 1e-6);
+                });
+                double weighted_index = std::inner_product(sec.begin(), sec.end(), weights.begin(), 0.0) / std::accumulate(weights.begin(), weights.end(), 0.0);
+                pin_point_indices.push_back(static_cast<int>(std::round(weighted_index)));
+            }
+        }
+    }
+
+    int last_idx = distances.size() - 1;
+    if (pin_point_indices.back() != last_idx) {
+        pin_point_indices.push_back(last_idx);
+    }
+
+    for (int i : pin_point_indices) {
+        pin_point_list.push_back(path[i + 1]);
+    }
+
+    return {pin_point_indices, pin_point_list};
 }
 
 

@@ -30,10 +30,11 @@ void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
 void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile);
 void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints);
 
+std::pair<std::vector<int>, std::vector<Eigen::Vector2d>> pin_point_select(const std::vector<Eigen::Vector2d>& path);
+
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& plan);
-
 class MyGlobalPlanner : public nav_core::BaseGlobalPlanner {
 public:
     // Constructors
