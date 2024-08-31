@@ -18,5 +18,5 @@ obstacle_layer:
    scan: {sensor_frame: car_1_laser, data_type: LaserScan, topic: /car_1/scan, marking: true, clearing: true}
 
 inflation_layer:
-   inflation_radius: 1.0
-   cost_scaling_factor: 1.0
+   inflation_radius: 0.0
+   cost_scaling_factor: 10.0
