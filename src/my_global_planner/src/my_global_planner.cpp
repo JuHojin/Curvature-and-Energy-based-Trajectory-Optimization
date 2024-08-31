@@ -93,31 +93,21 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
     // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
     std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
     std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER);
-    std::vector<geometry_msgs::PoseStamped> final_plan = convertVector2dToPoseStamped(opt_path);
+    std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+
+    std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
 
     nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
     publishPath(plan_publisher_final, final_plan_world);
-    
+
+
     // Velocity Profile
     Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
     auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
     Eigen::VectorXd velocity_profile = velocity_result.first;
     Eigen::MatrixXd velocity_constraints = velocity_result.second;
-
-    // Publish velocity profile and constraints for plotting in Python node
-    std_msgs::Float64MultiArray profile_msg;
-    for (int i = 0; i < velocity_profile.size(); ++i) {
-        profile_msg.data.push_back(velocity_profile(i));
-    }
-    profile_publisher.publish(profile_msg);
-
-    std_msgs::Float64MultiArray constraints_msg;
-    for (int i = 0; i < velocity_constraints.rows(); ++i) {
-        for (int j = 0; j < velocity_constraints.cols(); ++j) {
-            constraints_msg.data.push_back(velocity_constraints(i, j));
-        }
-    }
-    constraints_publisher.publish(constraints_msg);
+    publishVelocityProfile(profile_publisher, velocity_profile);
+    publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
     plan = final_plan_world.poses;
 
