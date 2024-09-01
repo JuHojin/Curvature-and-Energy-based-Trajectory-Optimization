@@ -138,7 +138,7 @@ add_library(${PROJECT_NAME}
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/my_global_planner_node.cpp)
+add_executable(replanning_trigger src/replanning_trigger.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -155,6 +155,11 @@ target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
   osqp::osqp
 )
+
+target_link_libraries(replanning_trigger
+  ${catkin_LIBRARIES}
+)
+
 
 #############
 ## Install ##

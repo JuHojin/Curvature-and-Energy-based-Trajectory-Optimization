@@ -15,6 +15,8 @@
 #include <base_local_planner/costmap_model.h>
 #include <vector>
 #include <Eigen/Dense>
+#include <std_msgs/Bool.h>
+#include <geometry_msgs/PoseArray.h>
 
 namespace my_global_planner {
 
@@ -30,7 +32,7 @@ void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
 void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile);
 void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints);
 
-std::pair<std::vector<int>, std::vector<Eigen::Vector2d>> pin_point_select(const std::vector<Eigen::Vector2d>& path);
+std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path);
 
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
@@ -50,14 +52,20 @@ public:
                   const geometry_msgs::PoseStamped& goal,
                   std::vector<geometry_msgs::PoseStamped>& plan);
 
-private:    
+private:
+    bool replanning_mode;
+
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
     ros::Publisher plan_publisher_final;
     ros::Publisher profile_publisher;
     ros::Publisher constraints_publisher;
+    ros::Publisher pin_points_publisher;
+
+    ros::Subscriber replanning_trigger_sub;
     
+    void replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg);
 };
 
 } // namespace my_global_planner

@@ -13,7 +13,7 @@ namespace Constant {
     constexpr unsigned int ADAPTIVE_MAX_STEP = 13;
 
     // Minimum curvature optimization
-    constexpr double CURVATURE_BOUND = 0.7;
+    constexpr double CURVATURE_BOUND = 0.5;
     constexpr unsigned int MAX_OPT_ITER = 10;
 
     // Velocity Profile [SI]
