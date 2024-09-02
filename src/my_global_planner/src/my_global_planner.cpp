@@ -13,6 +13,7 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <numeric>
 #include <geometry_msgs/Point.h>
+#include <std_msgs/Int32MultiArray.h>
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -22,7 +23,6 @@ namespace my_global_planner {
 costmap_2d::Costmap2D* costmap = nullptr;
 ros::Publisher plan_publisher_bnd_L;
 ros::Publisher plan_publisher_bnd_R;
-ros::Publisher plan_publisher_final;
 ros::Publisher plan_publisher_opt;
 
 MyGlobalPlanner::MyGlobalPlanner() {}
@@ -45,10 +45,12 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_bnd_L = private_nh.advertise<nav_msgs::Path>("plan/bnd_L", 1);
     plan_publisher_bnd_R = private_nh.advertise<nav_msgs::Path>("plan/bnd_R", 1);
     plan_publisher_opt = private_nh.advertise<nav_msgs::Path>("plan/opt", 1);
+    plan_publisher_last_opt = private_nh.advertise<nav_msgs::Path>("plan/last_opt", 1);
     plan_publisher_final = private_nh.advertise<nav_msgs::Path>("plan/final", 1);
     profile_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_profile", 10);
     constraints_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_constraints", 10);
-    pin_points_publisher = private_nh.advertise<geometry_msgs::PoseArray>("pin_points", 10);
+    pin_points_publisher = private_nh.advertise<geometry_msgs::PoseArray>("pin_point_list", 10);
+    pin_point_indices_publisher = private_nh.advertise<std_msgs::Int32MultiArray>("pin_point_indices", 10);
     replanning_trigger_sub = private_nh.subscribe("replanning_trigger", 1, &MyGlobalPlanner::replanningTriggerCallback, this);
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
@@ -56,7 +58,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 void MyGlobalPlanner::replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg) {
     replanning_mode = msg->data;
     if (replanning_mode) {
-        ROS_INFO("Replanning Trigger");
+        ROS_INFO("Replanning Triggered");
         // planner->makePlan(start, goal, plan);
     } else {
         ROS_INFO("No Replanning");
@@ -115,19 +117,22 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
         // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
         std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
         std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER);
+        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+        nav_msgs::Path last_opt_plan_world = producePathMapToWorld(last_opt_plan);
+        publishPath(plan_publisher_last_opt, last_opt_plan_world);
 
         // Pin point selection
         auto pin_point_result = pin_point_select(opt_path);
-        std::vector<int> pin_point_indices = pin_point_result.first;
         geometry_msgs::PoseArray pin_point_list = pin_point_result.second;
+        std_msgs::Int32MultiArray indices_msg;
+        indices_msg.data = pin_point_result.first;
         pin_points_publisher.publish(pin_point_list);
+        pin_point_indices_publisher.publish(indices_msg);
 
         // Final plan - make it uniform
-        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
         std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
         publishPath(plan_publisher_final, final_plan_world);
-
 
         // Velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);

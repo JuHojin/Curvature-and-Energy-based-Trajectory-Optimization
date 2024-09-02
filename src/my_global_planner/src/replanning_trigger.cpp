@@ -1,8 +1,11 @@
+// replanning_trigger.cpp
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int32MultiArray.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Path.h>
 #include <costmap_2d/costmap_2d_ros.h>
 #include <costmap_2d/costmap_2d.h>
 #include <tf/transform_listener.h>
@@ -14,10 +17,12 @@ class ReplanningTriggerNode {
 public:
     ReplanningTriggerNode() {
         trigger_pub_ = nh_.advertise<std_msgs::Bool>("/move_base/MyGlobalPlanner/replanning_trigger", 1);
-        pin_point_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/pin_points", 1, &ReplanningTriggerNode::pinPointCallback, this);
+        pin_point_list_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/pin_point_list", 1, &ReplanningTriggerNode::pinPointCallback, this);
+        pin_point_indices_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/pin_point_indices", 1, &ReplanningTriggerNode::pinPointIndicesCallback, this);
         global_costmap_sub_ = nh_.subscribe("/move_base/global_costmap/costmap", 1, &ReplanningTriggerNode::globalCostmapCallback, this);
         local_costmap_sub_ = nh_.subscribe("/move_base/local_costmap/costmap", 1, &ReplanningTriggerNode::localCostmapCallback, this);
         amcl_pose_sub_ = nh_.subscribe("/amcl_pose", 1, &ReplanningTriggerNode::amclPoseCallback, this);
+        last_opt_plan_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/plan/last_opt", 1, &ReplanningTriggerNode::lastOptPlanCallback, this);
         line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
         pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
 
@@ -29,6 +34,8 @@ public:
         ros::Rate rate(1.0);
         while (ros::ok()) {
             publishAllPinPoints();
+            updateReplanningIndex();
+            ROS_WARN("replanning idx: %d", replanning_idx_);
             checkForReplanning();
             std_msgs::Bool msg;
             msg.data = trigger_replanning_;
@@ -43,17 +50,22 @@ private:
     ros::Publisher trigger_pub_;
     ros::Publisher line_pub_;
     ros::Publisher pin_points_pub_;
-    ros::Subscriber pin_point_sub_;
+    ros::Subscriber pin_point_list_sub_;
+    ros::Subscriber pin_point_indices_sub_;
     ros::Subscriber global_costmap_sub_;
     ros::Subscriber local_costmap_sub_;
     ros::Subscriber amcl_pose_sub_;
+    ros::Subscriber last_opt_plan_sub_;
 
     bool trigger_replanning_ = false;
+    int replanning_idx_ = 1;
     geometry_msgs::PoseArray pin_points_;
     geometry_msgs::PoseArray pin_points_world_;
+    std::vector<int> pin_point_indices_;
     nav_msgs::OccupancyGrid::ConstPtr global_costmap_;
     nav_msgs::OccupancyGrid::ConstPtr local_costmap_;
     geometry_msgs::PointStamped current_pose_;
+    nav_msgs::Path last_opt_plan_;
     tf::TransformListener tf_listener_;
 
     void pinPointCallback(const geometry_msgs::PoseArray::ConstPtr& msg) {
@@ -81,6 +93,13 @@ private:
         ROS_INFO("Received and transformed pin points.");
     }
 
+    void pinPointIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg) {
+        pin_point_indices_ = msg->data;
+        std::reverse(pin_point_indices_.begin(), pin_point_indices_.end());
+        ROS_INFO("Received and reversed pin point indices.");
+    }
+
+
     void globalCostmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
         global_costmap_ = msg;
     }
@@ -97,6 +116,95 @@ private:
         ROS_INFO("Received AMCL pose.");
     }
 
+    void lastOptPlanCallback(const nav_msgs::Path::ConstPtr& msg) {
+        last_opt_plan_ = *msg;
+        replanning_idx_ = 1;
+        ROS_INFO("Received last opt plan.");
+    }
+
+    int getNearestPointIndex() {
+        if (last_opt_plan_.poses.empty()) {
+            ROS_WARN("Final plan is empty, cannot find the nearest point.");
+            return -1;
+        }
+
+        int nearest_index = -1;
+        double min_distance = std::numeric_limits<double>::max();
+
+        double current_x = current_pose_.point.x;
+        double current_y = current_pose_.point.y;
+
+        for (int i = 0; i < last_opt_plan_.poses.size(); ++i) {
+            double plan_x = last_opt_plan_.poses[i].pose.position.x;
+            double plan_y = last_opt_plan_.poses[i].pose.position.y;
+
+            double distance = std::sqrt(std::pow(plan_x - current_x, 2) + std::pow(plan_y - current_y, 2));
+
+            if (distance < min_distance) {
+                min_distance = distance;
+                nearest_index = i;
+            }
+        }
+
+        return nearest_index;
+    }
+
+    void updateReplanningIndex() {
+        int current_idx = getNearestPointIndex();
+        if (current_idx == -1) {
+            ROS_WARN("Unable to update replanning index because the nearest point index could not be found.");
+            return;
+        }
+        
+        // std::stringstream ss;
+        // ss << "Pin point indices: ";
+        // for (size_t i = 0; i < pin_point_indices_.size(); ++i) {
+        //     ss << pin_point_indices_[i];
+        //     if (i < pin_point_indices_.size() - 1) {
+        //         ss << ", ";
+        //     }
+        // }
+        // ROS_INFO("%s", ss.str().c_str());
+        
+        if (!(pin_point_indices_.empty()) && current_idx >= pin_point_indices_.back()) {
+            pin_point_indices_.pop_back();
+            ++replanning_idx_;
+            if (replanning_idx_ >= pin_points_.poses.size()) {
+                replanning_idx_ = pin_points_.poses.size() - 1;
+            }
+        }
+
+        if (replanning_idx_ < pin_points_world_.poses.size()) {
+            geometry_msgs::Pose point_to_publish = pin_points_world_.poses[replanning_idx_];
+
+            // Create a red marker for the point
+            visualization_msgs::Marker red_point_marker;
+            red_point_marker.header.frame_id = "map";
+            red_point_marker.header.stamp = ros::Time::now();
+            red_point_marker.ns = "replanning_trigger";
+            red_point_marker.id = replanning_idx_;
+            red_point_marker.type = visualization_msgs::Marker::SPHERE;
+            red_point_marker.action = visualization_msgs::Marker::ADD;
+
+            red_point_marker.pose.position.x = point_to_publish.position.x;
+            red_point_marker.pose.position.y = point_to_publish.position.y;
+            red_point_marker.pose.position.z = point_to_publish.position.z;
+            red_point_marker.pose.orientation.w = 1.0;
+
+            red_point_marker.scale.x = 0.3;
+            red_point_marker.scale.y = 0.3;
+            red_point_marker.scale.z = 0.3;
+
+            red_point_marker.color.r = 1.0;
+            red_point_marker.color.g = 0.0;
+            red_point_marker.color.b = 0.0;
+            red_point_marker.color.a = 1.0;
+
+            line_pub_.publish(red_point_marker);
+        } else {
+            ROS_WARN("Replanning index out of bounds, cannot publish marker.");
+        }
+    }
 
     void checkForReplanning() {
         if (!global_costmap_ || !local_costmap_) {
@@ -111,7 +219,7 @@ private:
             return;
         }
 
-        for (int i = pin_points_world_.poses.size() - 1; i >= 0; --i) {
+        for (int i = pin_points_world_.poses.size() - 1; i >= replanning_idx_; --i) {
             geometry_msgs::PointStamped global_point, local_point;
             global_point.point.x = pin_points_world_.poses[i].position.x;
             global_point.point.y = pin_points_world_.poses[i].position.y;
@@ -150,7 +258,7 @@ private:
                 // Check the line to pin point is free in local costmap
                 if (isPathClear(current_pose_.point, local_point.point, local_costmap_)) {
                     if (!isPathClear(current_pose_.point, local_point.point, global_costmap_)) {
-                        ROS_INFO("\nTriggering replanning!\n");
+                        ROS_INFO("\nTrigger replanning!\n");
                         trigger_replanning_ = true;
                         publishLineMarker(current_pose_.point, pin_points_world_.poses[i].position);
                         return;
@@ -248,8 +356,8 @@ private:
         points_marker.type = visualization_msgs::Marker::POINTS;
         points_marker.action = visualization_msgs::Marker::ADD;
 
-        points_marker.scale.x = 0.5;
-        points_marker.scale.y = 0.5;
+        points_marker.scale.x = 0.1;
+        points_marker.scale.y = 0.1;
         points_marker.color.r = 0.0;
         points_marker.color.g = 1.0;
         points_marker.color.b = 0.0;

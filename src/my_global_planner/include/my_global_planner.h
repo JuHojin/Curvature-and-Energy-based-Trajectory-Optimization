@@ -59,9 +59,12 @@ private:
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
     ros::Publisher plan_publisher_final;
+    ros::Publisher plan_publisher_last_opt;
     ros::Publisher profile_publisher;
     ros::Publisher constraints_publisher;
     ros::Publisher pin_points_publisher;
+    ros::Publisher pin_point_indices_publisher;
+
 
     ros::Subscriber replanning_trigger_sub;
     
