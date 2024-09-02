@@ -53,7 +53,7 @@ private:
     geometry_msgs::PoseArray pin_points_world_;
     nav_msgs::OccupancyGrid::ConstPtr global_costmap_;
     nav_msgs::OccupancyGrid::ConstPtr local_costmap_;
-    geometry_msgs::PoseStamped current_pose_;
+    geometry_msgs::PointStamped current_pose_;
     tf::TransformListener tf_listener_;
 
     void pinPointCallback(const geometry_msgs::PoseArray::ConstPtr& msg) {
@@ -90,10 +90,13 @@ private:
     }
 
     void amclPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg) {
-        current_pose_.pose = msg->pose.pose;
+        current_pose_.point.x = msg->pose.pose.position.x;
+        current_pose_.point.y = msg->pose.pose.position.y;
+        current_pose_.point.z = msg->pose.pose.position.z;
         current_pose_.header = msg->header;
         ROS_INFO("Received AMCL pose.");
     }
+
 
     void checkForReplanning() {
         if (!global_costmap_ || !local_costmap_) {
@@ -109,32 +112,54 @@ private:
         }
 
         for (int i = pin_points_world_.poses.size() - 1; i >= 0; --i) {
-            double mx, my;
-            worldToMap(local_costmap_, pin_points_world_.poses[i].position.x, pin_points_world_.poses[i].position.y, mx, my);
+            geometry_msgs::PointStamped global_point, local_point;
+            global_point.point.x = pin_points_world_.poses[i].position.x;
+            global_point.point.y = pin_points_world_.poses[i].position.y;
+            global_point.point.z = 0;
+            global_point.header.frame_id = "map";
+            global_point.header.stamp = ros::Time(0);
 
-            // Check local costmap boundary
-            if (mx < 0 || mx >= local_costmap_->info.width || my < 0 || my >= local_costmap_->info.height) {
-                ROS_WARN("Pin point[%d] is out of local costmap bounds, skipping this point.", i);
-                continue;
-            }
+            try {
+                // Transform the point from the global costmap frame to the local costmap frame
+                tf_listener_.transformPoint("odom", global_point, local_point);
 
-            // Check if the point is in an obstacle or inflation layer in the local costmap
-            int index = static_cast<int>(my) * local_costmap_->info.width + static_cast<int>(mx);
-            ROS_INFO("Cost value at index [%d]: %d", index, local_costmap_->data[index]);
-            if (local_costmap_->data[index] >= Constant::OBSTACLE_INFLATION_INIT) {
-                ROS_WARN("Pin point[%d] is in an obstacle or inflation layer, skipping this point.", i);
-                continue;
-            }
+                double pin_point_x_odom = local_point.point.x;                
+                double pin_point_y_odom = local_point.point.y;
 
-            // Check the line to pin point is free in local costmap
-            if (isPathClear(current_pose_.pose, pin_points_world_.poses[i], local_costmap_)) {
-                // Check the line to pin point is not free in global costmap
-                if (!isPathClear(current_pose_.pose, pin_points_world_.poses[i], global_costmap_)) {
-                    ROS_INFO("Triggering replanning due to detected obstacle.");
-                    trigger_replanning_ = true;
-                    publishLineMarker(current_pose_.pose, pin_points_world_.poses[i]);
-                    return;
+                float local_costmap_x = local_costmap_->info.origin.position.x;
+                float local_costmap_y = local_costmap_->info.origin.position.y;
+
+                double mx = (pin_point_x_odom - local_costmap_x) / local_costmap_->info.resolution;
+                double my = (pin_point_y_odom - local_costmap_y) / local_costmap_->info.resolution;
+
+                // Check local costmap boundary
+                if (mx < 0 || my >= local_costmap_->info.width || mx < 0 || my >= local_costmap_->info.height) {
+                    ROS_INFO("Pin point[%d] is (%f, %f) out of local costmap bounds (%d, %d), skipping this point.", i, mx, my, local_costmap_->info.width, local_costmap_->info.height);
+                    continue;
                 }
+
+                // Convert to integer indices for costmap lookup
+                int index = static_cast<int>(my) * local_costmap_->info.width + static_cast<int>(mx);
+
+                // Check if the point is in an obstacle or inflation layer in the local costmap
+                if (local_costmap_->data[index] != 0) {
+                    ROS_INFO("Pin point[%d] is in an obstacle, inflation layer, or unknown region, skipping this point.", i);
+                    continue;
+                }
+
+                // Check the line to pin point is free in local costmap
+                if (isPathClear(current_pose_.point, local_point.point, local_costmap_)) {
+                    if (!isPathClear(current_pose_.point, local_point.point, global_costmap_)) {
+                        ROS_INFO("\nTriggering replanning!\n");
+                        trigger_replanning_ = true;
+                        publishLineMarker(current_pose_.point, pin_points_world_.poses[i].position);
+                        return;
+                    }
+                }
+
+            } catch (tf2::TransformException& ex) {
+                ROS_WARN("Transform error: %s", ex.what());
+                continue;
             }
         }
 
@@ -142,18 +167,18 @@ private:
         trigger_replanning_ = false;
     }
 
-
-    bool isPathClear(const geometry_msgs::Pose& start, const geometry_msgs::Pose& end, const nav_msgs::OccupancyGrid::ConstPtr& costmap) {
+    bool isPathClear(const geometry_msgs::Point& start, const geometry_msgs::Point& end, const nav_msgs::OccupancyGrid::ConstPtr& costmap) {
         int width = costmap->info.width;
         int height = costmap->info.height;
         double resolution = costmap->info.resolution;
         double origin_x = costmap->info.origin.position.x;
         double origin_y = costmap->info.origin.position.y;
 
-        int start_x = static_cast<int>((start.position.x - origin_x) / resolution);
-        int start_y = static_cast<int>((start.position.y - origin_y) / resolution);
-        int end_x = static_cast<int>((end.position.x - origin_x) / resolution);
-        int end_y = static_cast<int>((end.position.y - origin_y) / resolution);
+        int start_x = static_cast<int>((start.x - origin_x) / resolution);
+        int start_y = static_cast<int>((start.y - origin_y) / resolution);
+        int end_x = static_cast<int>((end.x - origin_x) / resolution);
+        int end_y = static_cast<int>((end.y - origin_y) / resolution);
+
 
         int dx = abs(end_x - start_x);
         int dy = abs(end_y - start_y);
@@ -183,7 +208,7 @@ private:
         return true;  // No Obstacle
     }
 
-    void publishLineMarker(const geometry_msgs::Pose& start, const geometry_msgs::Pose& end) {
+    void publishLineMarker(const geometry_msgs::Point& start, const geometry_msgs::Point& end) {
         visualization_msgs::Marker line_marker;
         line_marker.header.frame_id = "map";
         line_marker.header.stamp = ros::Time::now();
@@ -200,13 +225,13 @@ private:
 
         geometry_msgs::Point p_start, p_end;
 
-        p_start.x = start.position.x;
-        p_start.y = start.position.y;
-        p_start.z = start.position.z;
+        p_start.x = start.x;
+        p_start.y = start.y;
+        p_start.z = start.z;
 
-        p_end.x = end.position.x;
-        p_end.y = end.position.y;
-        p_end.z = end.position.z;
+        p_end.x = end.x;
+        p_end.y = end.y;
+        p_end.z = end.z;
 
         line_marker.points.push_back(p_start);
         line_marker.points.push_back(p_end);
@@ -231,13 +256,7 @@ private:
         points_marker.color.a = 1.0;
 
         for (const auto& pose : pin_points_world_.poses) {
-            geometry_msgs::Point p;
-
-            p.x = pose.position.x;
-            p.y = pose.position.y;
-            p.z = pose.position.z;
-
-            points_marker.points.push_back(p);
+            points_marker.points.push_back(pose.position);
         }
 
         pin_points_pub_.publish(points_marker);
