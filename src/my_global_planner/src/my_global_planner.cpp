@@ -117,22 +117,26 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
         // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
         std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
         std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER);
-        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-        nav_msgs::Path last_opt_plan_world = producePathMapToWorld(last_opt_plan);
-        publishPath(plan_publisher_last_opt, last_opt_plan_world);
 
-        // Pin point selection
+        // Pin point selection (based on opt_path)
         auto pin_point_result = pin_point_select(opt_path);
-        geometry_msgs::PoseArray pin_point_list = pin_point_result.second;
-        std_msgs::Int32MultiArray indices_msg;
-        indices_msg.data = pin_point_result.first;
-        pin_points_publisher.publish(pin_point_list);
-        pin_point_indices_publisher.publish(indices_msg);
+        std::vector<int> opt_pin_point_indices = pin_point_result.first;
+        geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
 
         // Final plan - make it uniform
+        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
         std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
         publishPath(plan_publisher_final, final_plan_world);
+
+        // Update pin points (based on final_plan)
+        auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
+        geometry_msgs::PoseArray updated_pin_point_list = updated_pin_points.first;
+        std::vector<int> updated_pin_point_indices = updated_pin_points.second;
+        std_msgs::Int32MultiArray indices_msg;
+        indices_msg.data = updated_pin_point_indices;
+        pin_points_publisher.publish(updated_pin_point_list);
+        pin_point_indices_publisher.publish(indices_msg);
 
         // Velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
@@ -325,6 +329,37 @@ std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std
     }
 
     return {pin_point_indices, pose_array};
+}
+
+std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(
+    const geometry_msgs::PoseArray& opt_pin_point_list,
+    const std::vector<geometry_msgs::PoseStamped>& final_plan) {
+
+    geometry_msgs::PoseArray updated_pin_point_list;
+    std::vector<int> updated_pin_point_indices;
+
+    for (const auto& pin_point : opt_pin_point_list.poses) {
+        double min_distance = std::numeric_limits<double>::max();
+        int closest_index = -1;
+
+        for (size_t i = 0; i < final_plan.size(); ++i) {
+            double dx = final_plan[i].pose.position.x - pin_point.position.x;
+            double dy = final_plan[i].pose.position.y - pin_point.position.y;
+            double distance = std::sqrt(dx * dx + dy * dy);
+
+            if (distance < min_distance) {
+                min_distance = distance;
+                closest_index = i;
+            }
+        }
+
+        if (closest_index != -1) {
+            updated_pin_point_list.poses.push_back(final_plan[closest_index].pose);
+            updated_pin_point_indices.push_back(closest_index);
+        }
+    }
+
+    return {updated_pin_point_list, updated_pin_point_indices};
 }
 
 

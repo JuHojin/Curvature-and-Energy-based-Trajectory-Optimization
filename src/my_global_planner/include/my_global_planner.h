@@ -33,6 +33,7 @@ void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::Vect
 void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints);
 
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path);
+std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geometry_msgs::PoseArray& opt_pin_point_list, const std::vector<geometry_msgs::PoseStamped>& final_plan);
 
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
