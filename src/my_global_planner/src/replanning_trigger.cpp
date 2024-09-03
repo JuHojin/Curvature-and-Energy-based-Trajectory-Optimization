@@ -302,6 +302,7 @@ private:
                         ROS_INFO("\nTrigger replanning!\n");
                         trigger_replanning_ = true;
                         publishLineMarker(final_plan_.poses[ahead_idx_].pose.position, pin_points_world_.poses[i].position);
+                        ++replanning_idx_;
                         return;
                     }
                 }
@@ -381,6 +382,12 @@ private:
         p_end.x = end.x;
         p_end.y = end.y;
         p_end.z = end.z;
+
+        geometry_msgs::Quaternion identity_quat;
+        identity_quat.x = 0.0;
+        identity_quat.y = 0.0;
+        identity_quat.z = 0.0;
+        identity_quat.w = 1.0;
 
         line_marker.points.push_back(p_start);
         line_marker.points.push_back(p_end);
