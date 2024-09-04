@@ -13,7 +13,6 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <numeric>
 #include <geometry_msgs/Point.h>
-#include <std_msgs/Int32MultiArray.h>
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -52,6 +51,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     pin_points_publisher = private_nh.advertise<geometry_msgs::PoseArray>("pin_point_list", 10);
     pin_point_indices_publisher = private_nh.advertise<std_msgs::Int32MultiArray>("pin_point_indices", 10);
     replanning_trigger_sub = private_nh.subscribe("replanning_trigger", 1, &MyGlobalPlanner::replanningTriggerCallback, this);
+    pin_point_indices_sub_ = private_nh.subscribe("pin_point_indices", 1, &MyGlobalPlanner::pinPointIndicesCallback, this);
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
 
@@ -59,23 +59,105 @@ void MyGlobalPlanner::replanningTriggerCallback(const std_msgs::Bool::ConstPtr& 
     replanning_mode = msg->data;
     if (replanning_mode) {
         ROS_INFO("Replanning Triggered");
-        // planner->makePlan(start, goal, plan);
+
+        if (!start_.header.frame_id.empty() && !goal_.header.frame_id.empty()) {
+            bool success = makePlan(start_, goal_, plan_);
+            if (success) {
+                ROS_INFO("Replanning successful");
+                // need to update 'plan' in original makePlan
+            } else {
+                ROS_WARN("Replanning failed");
+            }
+        } else {
+            ROS_ERROR("Start or Goal not set for replanning");
+        }
+
+        replanning_mode = false;
     } else {
         ROS_INFO("No Replanning");
     }
 }
 
-bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
-                               const geometry_msgs::PoseStamped& goal,
-                               std::vector<geometry_msgs::PoseStamped>& plan) {
+void MyGlobalPlanner::pinPointIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg) {
+    received_pin_point_indices_ = msg->data;
+    ROS_INFO("Received %lu pin point indices.", received_pin_point_indices_.size());
+}
+
+bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan) {
 
     if (replanning_mode) {
-        ROS_INFO("Replanning mode activated.");
-        // TODO: Replanning
+        ROS_INFO("Replanning mode.");
+        
+        int current_idx = received_pin_point_indices_[0];
+        int start_idx = received_pin_point_indices_[1];
+        int ahead_idx = received_pin_point_indices_[2];
+        int pin_point_idx = received_pin_point_indices_[3];
+
+        std::vector<geometry_msgs::PoseStamped> plan_initial;
+        std::vector<geometry_msgs::PoseStamped> plan_replan1;
+        std::vector<geometry_msgs::PoseStamped> plan_replan2;
+        std::vector<Eigen::Vector2d> path_replan;
+        std::vector<Eigen::Vector2d> path_replan1;
+        std::vector<Eigen::Vector2d> path_replan2;
+        std::vector<Eigen::Vector2d> path_opt_replan;
+        std::vector<geometry_msgs::PoseStamped> plan_opt_replan;
+        std::vector<geometry_msgs::PoseStamped> plan_final;
+        
+        ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx);
+
+        plan_initial.reserve(start_idx);
+        plan_replan1.reserve(ahead_idx - start_idx);
+        plan_replan2.reserve(2);
+        plan_final.reserve(plan.size() - pin_point_idx - 1);
+
+        // 1. plan_[0] ~ plan_[start_idx - 1]
+        plan_initial.insert(plan_initial.end(), plan.begin(), plan.begin() + start_idx);
+        ROS_INFO("1");
+        // 2.1. plan_[start_idx] ~ plan_[ahead_idx - 1]
+        plan_replan1.insert(plan_replan1.end(), plan.begin() + start_idx, plan.begin() + ahead_idx);
+        path_replan1 = convertPoseStampedToVector2d(plan_replan1);
+        ROS_INFO("2.1");
+        // 2.2. Uniformly spaced points between plan_[ahead_idx] and plan_[pin_point_idx]
+        plan_replan2.push_back(plan[ahead_idx]);
+        plan_replan2.push_back(plan[pin_point_idx]);
+        path_replan2 = convertPoseStampedToVector2d(plan_replan2);
+        path_replan2 = uniformSpacing(path_replan2);
+        ROS_INFO("2.2");
+        // 2.3. combine path_replan1 and path_replan2 to path_replan
+        path_replan.reserve(path_replan1.size() + path_replan2.size());
+        path_replan.insert(path_replan.end(), path_replan1.begin(), path_replan1.end());
+        path_replan.insert(path_replan.end(), path_replan2.begin(), path_replan2.end());
+        ROS_INFO("2.3");
+        // 2.4. Optimizatoin
+        path_opt_replan = optimize_min_curvature(path_replan, Constant::MAX_OPT_ITER);
+        plan_opt_replan = convertVector2dToPoseStamped(path_opt_replan);
+        ROS_INFO("2.4");
+        // 3. plan_[pin_point_idx + 1] ~ plan_[plan_.back()] (inclusive)
+        if (pin_point_idx + 1 < plan.size()) {
+            plan_final.insert(plan_final.end(), plan.begin() + pin_point_idx + 1, plan.end());
+        } else {
+            ROS_WARN("pin_point_idx + 1 is out of bounds. Skipping final plan insertion.");
+            ROS_INFO("pin_point_idx: %d, plan size: %lu", pin_point_idx, plan.size());
+        }
+
+        // Combine all plans into the final plan
+        plan.clear();
+        ROS_INFO("Before insertion: plan size = %lu, plan_initial size = %lu", plan.size(), plan_initial.size());
+        plan.insert(plan.end(), plan_initial.begin(), plan_initial.end());
+        ROS_INFO("After insertion: plan size = %lu", plan.size());
+
+        plan.insert(plan.end(), plan_opt_replan.begin(), plan_opt_replan.end());
+        plan.insert(plan.end(), plan_final.begin(), plan_final.end());
+
+        nav_msgs::Path plan_world = producePathMapToWorld(plan);
+        publishPath(plan_publisher_final, plan_world);
+
         replanning_mode = false;
         return true;
     } else {
         ROS_INFO("Normal planning mode.");
+        start_ = start;
+        goal_ = goal;
         plan.clear();
 
         // Convert start and goal point: (Real) World -> Map
@@ -146,6 +228,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start,
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
+        plan_ = final_plan;
         plan = final_plan_world.poses;
 
         return a_star_success;

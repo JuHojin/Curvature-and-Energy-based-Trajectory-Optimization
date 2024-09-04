@@ -28,6 +28,7 @@ public:
 
         start_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/start_point", 1);
         ahead_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/ahead_point", 1);
+        replanning_indices_pub_ = nh_.advertise<std_msgs::Int32MultiArray>("/replanning_trigger/replanning_index", 1);
 
         global_costmap_ = nullptr;
         local_costmap_ = nullptr;
@@ -40,7 +41,8 @@ public:
             updateCurrentIndex();
             updateReplanningIndex();
             updateStartAndAheadIndex();
-            ROS_WARN("replanning idx: %d", replanning_idx_);
+            publishReplanningIndices();
+            ROS_WARN("replanning idx: %d", replanning_bound_idx_);
             checkForReplanning();
             std_msgs::Bool msg;
             msg.data = trigger_replanning_;
@@ -59,13 +61,14 @@ private:
     ros::Subscriber pin_point_indices_sub_;
     ros::Publisher start_point_pub_;
     ros::Publisher ahead_point_pub_;
+    ros::Publisher replanning_indices_pub_;
     ros::Subscriber global_costmap_sub_;
     ros::Subscriber local_costmap_sub_;
     ros::Subscriber amcl_pose_sub_;
     ros::Subscriber final_plan_sub_;
 
     bool trigger_replanning_ = false;
-    int replanning_idx_ = 1;
+    int replanning_bound_idx_ = 1;
     int current_idx_;
     int start_idx_;
     int ahead_idx_;
@@ -128,7 +131,7 @@ private:
 
     void finalPlanCallback(const nav_msgs::Path::ConstPtr& msg) {
         final_plan_ = *msg;
-        replanning_idx_ = 1;
+        replanning_bound_idx_ = 1;
         ROS_INFO("Received final plan.");
     }
 
@@ -195,6 +198,16 @@ private:
         }
     }
 
+    void publishReplanningIndices() {
+        std_msgs::Int32MultiArray indices_msg;
+        indices_msg.data.push_back(current_idx_);
+        indices_msg.data.push_back(start_idx_);
+        indices_msg.data.push_back(ahead_idx_);
+        indices_msg.data.push_back(replanning_bound_idx_);
+
+        replanning_indices_pub_.publish(indices_msg);
+    }
+
     void updateReplanningIndex() {
         if (current_idx_ == -1) {
             ROS_WARN("Unable to update replanning index because the nearest point index could not be found.");
@@ -214,21 +227,21 @@ private:
         
         if (!(pin_point_indices_.empty()) && current_idx_ >= pin_point_indices_.back()) {
             pin_point_indices_.pop_back();
-            ++replanning_idx_;
-            if (replanning_idx_ >= pin_points_.poses.size()) {
-                replanning_idx_ = pin_points_.poses.size() - 1;
+            ++replanning_bound_idx_;
+            if (replanning_bound_idx_ >= pin_points_.poses.size()) {
+                replanning_bound_idx_ = pin_points_.poses.size() - 1;
             }
         }
 
-        if (replanning_idx_ < pin_points_world_.poses.size()) {
-            geometry_msgs::Pose point_to_publish = pin_points_world_.poses[replanning_idx_];
+        if (replanning_bound_idx_ < pin_points_world_.poses.size()) {
+            geometry_msgs::Pose point_to_publish = pin_points_world_.poses[replanning_bound_idx_];
 
             // Create a red marker for the point
             visualization_msgs::Marker red_point_marker;
             red_point_marker.header.frame_id = "map";
             red_point_marker.header.stamp = ros::Time::now();
             red_point_marker.ns = "replanning_trigger";
-            red_point_marker.id = replanning_idx_;
+            red_point_marker.id = replanning_bound_idx_;
             red_point_marker.type = visualization_msgs::Marker::SPHERE;
             red_point_marker.action = visualization_msgs::Marker::ADD;
 
@@ -265,7 +278,7 @@ private:
             return;
         }
 
-        for (int i = pin_points_world_.poses.size() - 1; i >= replanning_idx_; --i) {
+        for (int i = pin_points_world_.poses.size() - 1; i >= replanning_bound_idx_; --i) {
             geometry_msgs::PointStamped global_point, local_point;
             global_point.point.x = pin_points_world_.poses[i].position.x;
             global_point.point.y = pin_points_world_.poses[i].position.y;
@@ -302,7 +315,7 @@ private:
                         ROS_INFO("\nTrigger replanning!\n");
                         trigger_replanning_ = true;
                         publishLineMarker(final_plan_.poses[ahead_idx_].pose.position, pin_points_world_.poses[i].position);
-                        ++replanning_idx_;
+                        ++replanning_bound_idx_;
                         return;
                     }
                 }

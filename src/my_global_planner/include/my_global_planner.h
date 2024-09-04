@@ -17,6 +17,8 @@
 #include <Eigen/Dense>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/PoseArray.h>
+#include <std_msgs/Int32MultiArray.h>
+
 
 namespace my_global_planner {
 
@@ -52,9 +54,14 @@ public:
     bool makePlan(const geometry_msgs::PoseStamped& start,
                   const geometry_msgs::PoseStamped& goal,
                   std::vector<geometry_msgs::PoseStamped>& plan);
+    void pinPointIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
 
 private:
+    geometry_msgs::PoseStamped start_;
+    geometry_msgs::PoseStamped goal_;
+    std::vector<geometry_msgs::PoseStamped> plan_;
     bool replanning_mode;
+    std::vector<int> received_pin_point_indices_;
 
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
@@ -66,8 +73,8 @@ private:
     ros::Publisher pin_points_publisher;
     ros::Publisher pin_point_indices_publisher;
 
-
     ros::Subscriber replanning_trigger_sub;
+    ros::Subscriber pin_point_indices_sub_;
     
     void replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg);
 };
