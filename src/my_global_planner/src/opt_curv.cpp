@@ -16,7 +16,7 @@
 
 namespace my_global_planner {
 
-std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter) {
+std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local) {
     
     std::vector<Eigen::Vector2d> new_path;
     Eigen::VectorXd alpha;
@@ -34,14 +34,30 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
 
         // Boundaries
-        Boundaries Boundaries = getBoundaries(path, normal_vectors);
+        Boundaries Boundaries = getBoundaries(path, normal_vectors, local);
         std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
         std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
         nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
         nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
+
+        // if (local) {
+        //     // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
+        //     std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
+        //     std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
+
+        //     std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
+        //     std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
+        //     nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
+        //     nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
+        //     publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
+        //     publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
+        // } else {
+        //     publishPath(plan_publisher_bnd_L, left_bnd_world);
+        //     publishPath(plan_publisher_bnd_R, right_bnd_world);
+        // }
         publishPath(plan_publisher_bnd_L, left_bnd_world);
         publishPath(plan_publisher_bnd_R, right_bnd_world);
-
+        
         // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
@@ -253,7 +269,7 @@ double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::Vect
     return travel_time;
 }
 
-Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors) {
+Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, bool local) {
     Boundaries boundaries;
     size_t n = path.size();
     boundaries.left_bnd.points.resize(n);
@@ -271,8 +287,8 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
         double right_dx = -left_dx;
         double right_dy = -left_dy;
 
-        boundaries.left_bnd.distances[i] = checkBoundary(point, left_dx, left_dy);
-        boundaries.right_bnd.distances[i] = checkBoundary(point, right_dx, right_dy);
+        boundaries.left_bnd.distances[i] = checkBoundary(point, left_dx, left_dy, local);
+        boundaries.right_bnd.distances[i] = checkBoundary(point, right_dx, right_dy, local);
     }
 
     constrainDeviationChange(boundaries.left_bnd.distances);
@@ -343,33 +359,67 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
 // }
 
 // version 3
-double checkBoundary(const Eigen::Vector2d& point, double dx, double dy) {
-    int x = point.x();
-    int y = point.y();
-    
+double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool use_local_costmap) {
+    int map_x = static_cast<int>(point.x());
+    int map_y = static_cast<int>(point.y());
+
     int last_valid_d = Constant::DEV_MAX;
 
-    for (int d = Constant::DEV_MAX; d > 0; --d) {
-        // int nx = x + std::round(dx * d);
-        // int ny = y + std::round(dy * d);
-        int nx = x + dx * d;
-        int ny = y + dy * d;
+    if (use_local_costmap) {
+    const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;  // ConstPtr 사용
 
-        if (nx < 0 || ny < 0 || nx >= costmap->getSizeInCellsX() || ny >= costmap->getSizeInCellsY()) {
-            // If we hit a boundary, return the last valid distance
-            last_valid_d = d - 1;
+    if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
+        ROS_ERROR("Point (%d, %d) is out of local costmap bounds.", map_x, map_y);
+        return Constant::DEV_MAX;
+    }
+
+    for (int d = 0; d < Constant::DEV_MAX; ++d) {
+        int new_map_x = map_x + static_cast<int>(d * dx);
+        int new_map_y = map_y + static_cast<int>(d * dy);
+
+        if (new_map_x < 0 || new_map_y < 0 || new_map_x >= costmap_msg->info.width || new_map_y >= costmap_msg->info.height) {
+            break;
         }
 
-        if (costmap->getCost(nx, ny) >= Constant::OBSTACLE_INFLATION) {
-            // If we hit an obstacle, reduce the distance and continue
-            last_valid_d = d - 1;
-        } else {
-            // If no obstacle is found, return the last valid distance
-            return last_valid_d;
+        int index = new_map_y * costmap_msg->info.width + new_map_x;
+        if (costmap_msg->data[index] >= 50) {  // 장애물일 경우
+            break;
+        }
+
+        last_valid_d = d;
+        }
+    } else {
+        if (!costmap) {
+            ROS_WARN("Global costmap is not available.");
+            return Constant::DEV_MAX;
+        }
+
+        // 이미 map 좌표 기준으로 들어오므로 좌표 변환은 필요 없음.
+        unsigned int size_x = costmap->getSizeInCellsX();
+        unsigned int size_y = costmap->getSizeInCellsY();
+
+        if (map_x >= size_x || map_y >= size_y) {
+            ROS_WARN("Point (%d, %d) is out of global costmap bounds.", map_x, map_y);
+            return Constant::DEV_MAX;
+        }
+
+        for (int d = 0; d < Constant::DEV_MAX; ++d) {
+            unsigned int new_map_x = map_x + static_cast<int>(d * dx);
+            unsigned int new_map_y = map_y + static_cast<int>(d * dy);
+
+            if (new_map_x >= size_x || new_map_y >= size_y) {
+                break;
+            }
+
+            if (costmap->getCost(new_map_x, new_map_y) >= Constant::OBSTACLE_INFLATION) {
+                break;
+            }
+
+            last_valid_d = d;
         }
     }
 
-    return last_valid_d; // Return the final valid distance if no obstacles are encountered within the loop
+    return last_valid_d;
 }
 
 void constrainDeviationChange(std::vector<double>& dev_list) {

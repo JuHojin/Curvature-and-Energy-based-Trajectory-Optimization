@@ -16,18 +16,18 @@
 class ReplanningTriggerNode {
 public:
     ReplanningTriggerNode() {
-        trigger_pub_ = nh_.advertise<std_msgs::Bool>("/move_base/MyGlobalPlanner/replanning_trigger", 1);
         pin_point_list_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/pin_point_list", 1, &ReplanningTriggerNode::pinPointCallback, this);
         pin_point_indices_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/pin_point_indices", 1, &ReplanningTriggerNode::pinPointIndicesCallback, this);
         global_costmap_sub_ = nh_.subscribe("/move_base/global_costmap/costmap", 1, &ReplanningTriggerNode::globalCostmapCallback, this);
         local_costmap_sub_ = nh_.subscribe("/move_base/local_costmap/costmap", 1, &ReplanningTriggerNode::localCostmapCallback, this);
         amcl_pose_sub_ = nh_.subscribe("/amcl_pose", 1, &ReplanningTriggerNode::amclPoseCallback, this);
         final_plan_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/plan/final", 1, &ReplanningTriggerNode::finalPlanCallback, this);
-        line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
-        pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
 
+        pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
+        line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
         start_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/start_point", 1);
         ahead_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/ahead_point", 1);
+        trigger_pub_ = nh_.advertise<std_msgs::Bool>("/move_base/MyGlobalPlanner/replanning_trigger", 1);
         replanning_indices_pub_ = nh_.advertise<std_msgs::Int32MultiArray>("/replanning_trigger/replanning_index", 1);
 
         global_costmap_ = nullptr;
@@ -41,9 +41,9 @@ public:
             updateCurrentIndex();
             updateReplanningIndex();
             updateStartAndAheadIndex();
-            publishReplanningIndices();
             ROS_WARN("replanning idx: %d", replanning_bound_idx_);
             checkForReplanning();
+            publishReplanningIndices();
             std_msgs::Bool msg;
             msg.data = trigger_replanning_;
             trigger_pub_.publish(msg);
@@ -69,11 +69,12 @@ private:
 
     bool trigger_replanning_ = false;
     int replanning_bound_idx_ = 1;
-    int current_idx_;
-    int start_idx_;
-    int ahead_idx_;
+    int current_idx_ = -1;
+    int start_idx_ = -1;
+    int ahead_idx_ = -1;
     geometry_msgs::PoseArray pin_points_;
     geometry_msgs::PoseArray pin_points_world_;
+    std::vector<int> pin_point_indices_tmp;
     std::vector<int> pin_point_indices_;
     nav_msgs::OccupancyGrid::ConstPtr global_costmap_;
     nav_msgs::OccupancyGrid::ConstPtr local_costmap_;
@@ -107,11 +108,11 @@ private:
     }
 
     void pinPointIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg) {
+        pin_point_indices_tmp = msg->data;
         pin_point_indices_ = msg->data;
-        std::reverse(pin_point_indices_.begin(), pin_point_indices_.end());
+        std::reverse(pin_point_indices_tmp.begin(), pin_point_indices_tmp.end());
         ROS_INFO("Received and reversed pin point indices.");
     }
-
 
     void globalCostmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
         global_costmap_ = msg;
@@ -134,7 +135,6 @@ private:
         replanning_bound_idx_ = 1;
         ROS_INFO("Received final plan.");
     }
-
 
     void updateCurrentIndex() {
         if (final_plan_.poses.empty()) {
@@ -165,11 +165,11 @@ private:
     }
 
     void updateStartAndAheadIndex() {
-        double velocity = 1.0;
-        double time = 2.0;
+        double velocity = 3.0;
+        double time = 1.0;
 
         start_idx_ = current_idx_ + static_cast<int>(velocity * time);
-        ahead_idx_ = start_idx_ + static_cast<int>(velocity * time);
+        ahead_idx_ = current_idx_ + 2 * static_cast<int>(velocity * time);
 
         publishStartAndAheadPoints();
     }
@@ -200,11 +200,22 @@ private:
 
     void publishReplanningIndices() {
         std_msgs::Int32MultiArray indices_msg;
+
+
         indices_msg.data.push_back(current_idx_);
         indices_msg.data.push_back(start_idx_);
         indices_msg.data.push_back(ahead_idx_);
-        indices_msg.data.push_back(replanning_bound_idx_);
 
+        // TODO: convert to final_plan
+        int replanning_idx = -1;
+        if (!pin_point_indices_.empty()) {
+            replanning_idx = pin_point_indices_[replanning_bound_idx_-1];
+        }
+        indices_msg.data.push_back(replanning_idx);
+
+        ROS_INFO("current_idx_: %d, start_idx_: %d, ahead_idx_: %d, replanning_idx: %d", 
+                current_idx_, start_idx_, ahead_idx_, replanning_idx);
+        ROS_WARN("REPLAN IDX: %d", replanning_bound_idx_);
         replanning_indices_pub_.publish(indices_msg);
     }
 
@@ -217,20 +228,21 @@ private:
         // Debug in simulation
         // std::stringstream ss;
         // ss << "Pin point indices: ";
-        // for (size_t i = 0; i < pin_point_indices_.size(); ++i) {
-        //     ss << pin_point_indices_[i];
-        //     if (i < pin_point_indices_.size() - 1) {
+        // for (size_t i = 0; i < pin_point_indices_tmp.size(); ++i) {
+        //     ss << pin_point_indices_tmp[i];
+        //     if (i < pin_point_indices_tmp.size() - 1) {
         //         ss << ", ";
         //     }
         // }
         // ROS_INFO("%s", ss.str().c_str());
         
-        if (!(pin_point_indices_.empty()) && current_idx_ >= pin_point_indices_.back()) {
-            pin_point_indices_.pop_back();
+        if (!(pin_point_indices_tmp.empty()) && current_idx_ >= pin_point_indices_tmp.back()) {
+            pin_point_indices_tmp.pop_back();
             ++replanning_bound_idx_;
             if (replanning_bound_idx_ >= pin_points_.poses.size()) {
                 replanning_bound_idx_ = pin_points_.poses.size() - 1;
             }
+            ROS_INFO("Replnanning_idx: %d", replanning_bound_idx_);
         }
 
         if (replanning_bound_idx_ < pin_points_world_.poses.size()) {
@@ -289,6 +301,7 @@ private:
             try {
                 tf_listener_.transformPoint("odom", global_point, local_point);
 
+                // world to map conversion
                 double pin_point_x_odom = local_point.point.x;
                 double pin_point_y_odom = local_point.point.y;
 
@@ -316,6 +329,9 @@ private:
                         trigger_replanning_ = true;
                         publishLineMarker(final_plan_.poses[ahead_idx_].pose.position, pin_points_world_.poses[i].position);
                         ++replanning_bound_idx_;
+                        if (replanning_bound_idx_ > pin_points_world_.poses.size()) {
+                            replanning_bound_idx_ = pin_points_world_.poses.size();
+                        }
                         return;
                     }
                 }

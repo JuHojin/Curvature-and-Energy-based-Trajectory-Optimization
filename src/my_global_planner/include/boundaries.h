@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <geometry_msgs/PoseStamped.h>
+#include <Eigen/Dense>
 
 namespace my_global_planner {
 

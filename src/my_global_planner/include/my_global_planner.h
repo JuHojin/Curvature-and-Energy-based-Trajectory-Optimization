@@ -18,16 +18,20 @@
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/PoseArray.h>
 #include <std_msgs/Int32MultiArray.h>
-
+#include <nav_msgs/OccupancyGrid.h>
+#include <tf2_ros/transform_listener.h>
 
 namespace my_global_planner {
 
 // Costmap
 extern costmap_2d::Costmap2D* costmap;
+extern nav_msgs::OccupancyGrid::ConstPtr local_costmap_msg;
 
 // Publisher
 extern ros::Publisher plan_publisher_bnd_L;
 extern ros::Publisher plan_publisher_bnd_R;
+extern ros::Publisher plan_publisher_bnd_L_replan;
+extern ros::Publisher plan_publisher_bnd_R_replan;
 extern ros::Publisher plan_publisher_opt;
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
@@ -40,6 +44,10 @@ std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geom
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& plan);
+
+geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer);
+Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer);
+
 class MyGlobalPlanner : public nav_core::BaseGlobalPlanner {
 public:
     // Constructors
@@ -54,7 +62,10 @@ public:
     bool makePlan(const geometry_msgs::PoseStamped& start,
                   const geometry_msgs::PoseStamped& goal,
                   std::vector<geometry_msgs::PoseStamped>& plan);
-    void pinPointIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+    void replanningIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+
+    tf2_ros::Buffer tf_buffer;
+    tf2_ros::TransformListener tf_listener;
 
 private:
     geometry_msgs::PoseStamped start_;
@@ -67,6 +78,7 @@ private:
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
     ros::Publisher plan_publisher_final;
+    ros::Publisher plan_publisher_replan;
     ros::Publisher plan_publisher_last_opt;
     ros::Publisher profile_publisher;
     ros::Publisher constraints_publisher;
@@ -74,9 +86,12 @@ private:
     ros::Publisher pin_point_indices_publisher;
 
     ros::Subscriber replanning_trigger_sub;
-    ros::Subscriber pin_point_indices_sub_;
+    // ros::Subscriber pin_point_indices_sub_;
+    ros::Subscriber replanning_indices_sub;
+    ros::Subscriber local_costmap_sub;
     
     void replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg);
+    void localCostmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg);
 };
 
 } // namespace my_global_planner
