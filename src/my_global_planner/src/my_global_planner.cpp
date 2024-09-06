@@ -104,8 +104,86 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         ROS_WARN("Local costmap not received yet. Skipping local costmap usage.");
     }
 
+    // Minimum curvature planning
+    if (!replanning_mode) {
+        ROS_INFO("Normal planning mode.");
+        start_ = start;
+        goal_ = goal;
+        plan.clear();
+
+        // Convert start and goal point: (Real) World -> Map
+        unsigned int start_x, start_y, goal_x, goal_y;
+        if (!costmap->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y) ||
+            !costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y)) {
+            ROS_ERROR("Start or goal coordinates are out of bounds.");
+            return false;
+        }
+
+        // Find initial Path: A* Planning
+        ROS_INFO("Find path using A*.");
+        basic_planner::AStarPlanner a_star_planner;
+        std::vector<geometry_msgs::PoseStamped> a_star_plan;
+
+        bool a_star_success = a_star_planner.makePlan(start_x, start_y, goal_x, goal_y, a_star_plan);
+        updateOrientatoin(a_star_plan);
+        nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
+
+        if (a_star_success) {
+            ROS_INFO("Initial A* planning is successful.");
+            publishPath(plan_publisher_a_star, a_star_plan_world);
+        } else {
+            ROS_WARN("Initial A* planning failed.");
+        }
+
+        // Post smoothing
+        std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
+        nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
+        publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
+
+        // Uniform path Spacing
+        std::vector<geometry_msgs::PoseStamped> uniform_plan = uniformSpacing(post_smooth_plan);
+        nav_msgs::Path uniform_plan_world = producePathMapToWorld(uniform_plan);
+        publishPath(plan_publisher_uniform, uniform_plan_world);
+
+        // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
+        std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
+        std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false);
+
+        // Pin point selection (based on opt_path)
+        auto pin_point_result = pin_point_select(opt_path);
+        std::vector<int> opt_pin_point_indices = pin_point_result.first;
+        geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
+
+        // Final plan - make opt_path uniform
+        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+        std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
+        nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
+        publishPath(plan_publisher_final, final_plan_world);
+
+        // Update pin points (based on final_plan)
+        auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
+        geometry_msgs::PoseArray updated_pin_point_list = updated_pin_points.first;
+        std::vector<int> updated_pin_point_indices = updated_pin_points.second;
+        std_msgs::Int32MultiArray indices_msg;
+        indices_msg.data = updated_pin_point_indices;
+        pin_points_publisher.publish(updated_pin_point_list);
+        pin_point_indices_publisher.publish(indices_msg);
+
+        // Calculate velocity Profile
+        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
+        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        Eigen::VectorXd velocity_profile = velocity_result.first;
+        Eigen::MatrixXd velocity_constraints = velocity_result.second;
+        publishVelocityProfile(profile_publisher, velocity_profile);
+        publishVelocityConstraints(constraints_publisher, velocity_constraints);
+
+        plan_ = final_plan;
+        plan = final_plan_world.poses;
+
+        return a_star_success;
+    }
     // Replanning
-    if (replanning_mode) {
+    else {
         ROS_INFO("Replanning mode.");
         
         if (received_pin_point_indices_.size() < 4) {
@@ -233,84 +311,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         replanning_mode = false;
         return true;
-    } 
-    // Minimum curvature planning
-    else {
-        ROS_INFO("Normal planning mode.");
-        start_ = start;
-        goal_ = goal;
-        plan.clear();
-
-        // Convert start and goal point: (Real) World -> Map
-        unsigned int start_x, start_y, goal_x, goal_y;
-        if (!costmap->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y) ||
-            !costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y)) {
-            ROS_ERROR("Start or goal coordinates are out of bounds.");
-            return false;
-        }
-
-        // Find initial Path: A* Planning
-        ROS_INFO("Find path using A*.");
-        basic_planner::AStarPlanner a_star_planner;
-        std::vector<geometry_msgs::PoseStamped> a_star_plan;
-
-        bool a_star_success = a_star_planner.makePlan(start_x, start_y, goal_x, goal_y, a_star_plan);
-        updateOrientatoin(a_star_plan);
-        nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
-
-        if (a_star_success) {
-            ROS_INFO("Initial A* planning is successful.");
-            publishPath(plan_publisher_a_star, a_star_plan_world);
-        } else {
-            ROS_WARN("Initial A* planning failed.");
-        }
-
-        // Post smoothing
-        std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
-        nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
-        publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
-
-        // Uniform path Spacing
-        std::vector<geometry_msgs::PoseStamped> uniform_plan = uniformSpacing(post_smooth_plan);
-        nav_msgs::Path uniform_plan_world = producePathMapToWorld(uniform_plan);
-        publishPath(plan_publisher_uniform, uniform_plan_world);
-
-        // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
-        std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
-        std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false);
-
-        // Pin point selection (based on opt_path)
-        auto pin_point_result = pin_point_select(opt_path);
-        std::vector<int> opt_pin_point_indices = pin_point_result.first;
-        geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
-
-        // Final plan - make opt_path uniform
-        std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-        std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
-        nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
-        publishPath(plan_publisher_final, final_plan_world);
-
-        // Update pin points (based on final_plan)
-        auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
-        geometry_msgs::PoseArray updated_pin_point_list = updated_pin_points.first;
-        std::vector<int> updated_pin_point_indices = updated_pin_points.second;
-        std_msgs::Int32MultiArray indices_msg;
-        indices_msg.data = updated_pin_point_indices;
-        pin_points_publisher.publish(updated_pin_point_list);
-        pin_point_indices_publisher.publish(indices_msg);
-
-        // Calculate velocity Profile
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
-        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
-        Eigen::VectorXd velocity_profile = velocity_result.first;
-        Eigen::MatrixXd velocity_constraints = velocity_result.second;
-        publishVelocityProfile(profile_publisher, velocity_profile);
-        publishVelocityConstraints(constraints_publisher, velocity_constraints);
-
-        plan_ = final_plan;
-        plan = final_plan_world.poses;
-
-        return a_star_success;
     }
 }
 

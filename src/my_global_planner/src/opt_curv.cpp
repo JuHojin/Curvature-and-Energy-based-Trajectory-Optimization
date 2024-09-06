@@ -42,23 +42,23 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
         nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
 
-        if (local) {
-            // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
-            std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
-            std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
+        // if (local) {
+        //     // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
+        //     std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
+        //     std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
 
-            std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
-            std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
-            nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
-            nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
-            publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
-            publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
-        } else {
-            publishPath(plan_publisher_bnd_L, left_bnd_world);
-            publishPath(plan_publisher_bnd_R, right_bnd_world);
-        }
-        // publishPath(plan_publisher_bnd_L, left_bnd_world);
-        // publishPath(plan_publisher_bnd_R, right_bnd_world);
+        //     std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
+        //     std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
+        //     nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
+        //     nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
+        //     publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
+        //     publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
+        // } else {
+        //     publishPath(plan_publisher_bnd_L, left_bnd_world);
+        //     publishPath(plan_publisher_bnd_R, right_bnd_world);
+        // }
+        publishPath(plan_publisher_bnd_L, left_bnd_world);
+        publishPath(plan_publisher_bnd_R, right_bnd_world);
 
         // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
@@ -364,7 +364,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
     int map_x = static_cast<int>(point.x());
     int map_y = static_cast<int>(point.y());
 
-    int last_valid_d = Constant::DEV_MAX;
+    int last_valid_d = 0;
 
     if (use_local_costmap) {
     const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;

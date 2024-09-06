@@ -4,8 +4,8 @@
 
 namespace Constant {
     // Boundary
-    constexpr unsigned int DEV_MAX = 10;
-    constexpr unsigned int DEV_DOT = 1;
+    constexpr unsigned int DEV_MAX = 15;
+    constexpr unsigned int DEV_DOT = 2;
 
     // Spacing
     constexpr unsigned int UNIFORM_STEP = 5;
@@ -14,7 +14,7 @@ namespace Constant {
 
     // Minimum curvature optimization
     constexpr double CURVATURE_BOUND = 0.5;
-    constexpr unsigned int MAX_OPT_ITER = 10;
+    constexpr unsigned int MAX_OPT_ITER = 1;
 
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 20 / 3.6;
@@ -27,7 +27,7 @@ namespace Constant {
 
     // Map: Obstacle
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 150;
-    constexpr unsigned char OBSTACLE_INFLATION = 170;
+    constexpr unsigned char OBSTACLE_INFLATION = 150;
 }
 
 #endif // CONSTANT_H
