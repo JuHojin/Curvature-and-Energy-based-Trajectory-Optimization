@@ -2,10 +2,6 @@
 #include "a_star.h"
 #include "constant.h"
 
-#include <tf/tf.h>
-#include <cmath>
-#include <algorithm>
-
 namespace basic_planner {
 
     // Node

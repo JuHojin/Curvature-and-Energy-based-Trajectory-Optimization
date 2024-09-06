@@ -2,24 +2,23 @@
 #ifndef MY_GLOBAL_PLANNER_H
 #define MY_GLOBAL_PLANNER_H
 
-#include "a_star.h"
-
 #include <ros/ros.h>
-#include <costmap_2d/costmap_2d_ros.h>
-#include <costmap_2d/costmap_2d.h>
 #include <nav_core/base_global_planner.h>
-#include <nav_msgs/Path.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <angles/angles.h>
 #include <base_local_planner/world_model.h>
 #include <base_local_planner/costmap_model.h>
+#include <angles/angles.h>
 #include <vector>
 #include <Eigen/Dense>
 #include <std_msgs/Bool.h>
-#include <geometry_msgs/PoseArray.h>
 #include <std_msgs/Int32MultiArray.h>
+#include <costmap_2d/costmap_2d_ros.h>
+#include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <tf2_ros/transform_listener.h>
+#include "a_star.h"
 
 namespace my_global_planner {
 

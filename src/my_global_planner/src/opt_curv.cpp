@@ -1,20 +1,22 @@
 // opt_curv.cpp
-#include "my_global_planner.h"
-#include "opt_curv.h"
-#include "constant.h"
-#include "path_func.h"
-
 #include <ros/ros.h>
-#include <Eigen/Dense>
-#include <osqp.h>
-#include <vector>
-#include <iostream>
 #include <cmath>
 #include <limits>
 #include <tf/tf.h>
 #include <numeric>
+#include "my_global_planner.h"
+#include "opt_curv.h"
+#include "path_func.h"
+#include "constant.h"
 
 namespace my_global_planner {
+
+// Publishers for plot plans in Rviz
+ros::Publisher plan_publisher_bnd_L;
+ros::Publisher plan_publisher_bnd_R;
+ros::Publisher plan_publisher_bnd_L_replan;
+ros::Publisher plan_publisher_bnd_R_replan;
+ros::Publisher plan_publisher_opt;
 
 std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local) {
     
@@ -40,24 +42,24 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
         nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
 
-        // if (local) {
-        //     // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
-        //     std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
-        //     std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
+        if (local) {
+            // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
+            std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
+            std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
 
-        //     std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
-        //     std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
-        //     nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
-        //     nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
-        //     publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
-        //     publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
-        // } else {
-        //     publishPath(plan_publisher_bnd_L, left_bnd_world);
-        //     publishPath(plan_publisher_bnd_R, right_bnd_world);
-        // }
-        publishPath(plan_publisher_bnd_L, left_bnd_world);
-        publishPath(plan_publisher_bnd_R, right_bnd_world);
-        
+            std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
+            nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
+            nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
+            publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
+            publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
+        } else {
+            publishPath(plan_publisher_bnd_L, left_bnd_world);
+            publishPath(plan_publisher_bnd_R, right_bnd_world);
+        }
+        // publishPath(plan_publisher_bnd_L, left_bnd_world);
+        // publishPath(plan_publisher_bnd_R, right_bnd_world);
+
         // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
@@ -100,7 +102,6 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
     return new_path;
 }
-
 
 Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     int numPoints = path.size();
@@ -366,7 +367,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
     int last_valid_d = Constant::DEV_MAX;
 
     if (use_local_costmap) {
-    const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;  // ConstPtr 사용
+    const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;
 
     if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
         ROS_ERROR("Point (%d, %d) is out of local costmap bounds.", map_x, map_y);
@@ -382,7 +383,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
         }
 
         int index = new_map_y * costmap_msg->info.width + new_map_x;
-        if (costmap_msg->data[index] >= 50) {  // 장애물일 경우
+        if (costmap_msg->data[index] >= Constant::OBSTACLE_INFLATION) {
             break;
         }
 
@@ -394,7 +395,6 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
             return Constant::DEV_MAX;
         }
 
-        // 이미 map 좌표 기준으로 들어오므로 좌표 변환은 필요 없음.
         unsigned int size_x = costmap->getSizeInCellsX();
         unsigned int size_y = costmap->getSizeInCellsY();
 
@@ -481,12 +481,12 @@ csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat) {
 }
 
 std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
-                                     std::vector<double> left_dev_bnd,
-                                     std::vector<double> right_dev_bnd,
-                                     const std::vector<Eigen::Vector2d>& normal_vectors,
-                                     const Eigen::MatrixXd& A,
-                                     double curvature_bnd,
-                                     double start_angle, double end_angle) {
+                                                     std::vector<double> left_dev_bnd,
+                                                     std::vector<double> right_dev_bnd,
+                                                     const std::vector<Eigen::Vector2d>& normal_vectors,
+                                                     const Eigen::MatrixXd& A,
+                                                     double curvature_bnd,
+                                                     double start_angle, double end_angle) {
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
 
@@ -684,8 +684,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     // Solve the problem
     osqp_solve(work);
-
-    // Extract the solution
     Eigen::VectorXd solution(data->n);
     for (int i = 0; i < data->n; ++i) {
         solution[i] = work->solution->x[i];

@@ -1,13 +1,10 @@
 // path_func.cpp
+#include <ros/ros.h>
+#include <tf/tf.h>
 #include "my_global_planner.h"
 #include "path_func.h"
 #include "boundaries.h"
 #include "constant.h"
-
-#include <ros/ros.h>
-#include <costmap_2d/costmap_2d_ros.h>
-#include <costmap_2d/costmap_2d.h>
-#include <tf/tf.h>
 
 namespace my_global_planner {
 

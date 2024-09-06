@@ -1,4 +1,12 @@
 // my_global_planner.cpp
+#include <pluginlib/class_list_macros.h>
+#include <tf/tf.h>
+#include <cmath>
+#include <numeric>
+#include <std_msgs/Float64MultiArray.h>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include "my_global_planner.h"
 #include "a_star.h"
 #include "path_func.h"
@@ -6,30 +14,14 @@
 #include "constant.h"
 #include "boundaries.h"
 
-#include <pluginlib/class_list_macros.h>
-#include <tf/tf.h>
-#include <nav_msgs/Path.h>
-#include <cmath>
-#include <std_msgs/Float64MultiArray.h>
-#include <numeric>
-#include <geometry_msgs/Point.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <geometry_msgs/TransformStamped.h>
-
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
 
 namespace my_global_planner {
 
+// Global variables
 costmap_2d::Costmap2D* costmap = nullptr;
 nav_msgs::OccupancyGrid::ConstPtr local_costmap_msg;
-
-ros::Publisher plan_publisher_bnd_L;
-ros::Publisher plan_publisher_bnd_R;
-ros::Publisher plan_publisher_bnd_L_replan;
-ros::Publisher plan_publisher_bnd_R_replan;
-ros::Publisher plan_publisher_opt;
 
 MyGlobalPlanner::MyGlobalPlanner() : tf_listener(tf_buffer) {}
 
@@ -112,6 +104,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         ROS_WARN("Local costmap not received yet. Skipping local costmap usage.");
     }
 
+    // Replanning
     if (replanning_mode) {
         ROS_INFO("Replanning mode.");
         
@@ -138,25 +131,24 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // 1. plan_[0] ~ plan_[start_idx - 1]
         plan_initial.insert(plan_initial.end(), plan.begin(), plan.begin() + start_idx);
-        ROS_INFO("1");
+        
         // 2.1. plan_[start_idx] ~ plan_[ahead_idx - 1]
         plan_replan1.insert(plan_replan1.end(), plan.begin() + start_idx, plan.begin() + ahead_idx);
         path_replan1 = convertPoseStampedToVector2d(plan_replan1);
-        ROS_INFO("2.1");
+        
         // 2.2. Uniformly spaced points between plan_[ahead_idx] and plan_[pin_point_idx]
         plan_replan2.push_back(plan[ahead_idx]);
         plan_replan2.push_back(plan[pin_point_idx]);
         path_replan2 = convertPoseStampedToVector2d(plan_replan2);
         path_replan2 = uniformSpacing(path_replan2);
-        ROS_INFO("2.2");
+        
         // 2.3. combine path_replan1 and path_replan2 to path_replan
         path_replan.reserve(path_replan1.size() + path_replan2.size());
         path_replan.insert(path_replan.end(), path_replan1.begin(), path_replan1.end());
         path_replan.insert(path_replan.end(), path_replan2.begin(), path_replan2.end());
-        ROS_INFO("2.3");
+        
 
         // 2.4. Optimizatoin
-
         for (const auto& pose : path_replan) {
             unsigned int mx = pose.x();
             unsigned int my = pose.y();
@@ -178,10 +170,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             path_replan_local.push_back(Eigen::Vector2d(local_map_x, local_map_y));
         }
 
-
         path_opt_replan_local = optimize_min_curvature(path_replan_local, Constant::MAX_OPT_ITER, true);
-
-
 
         ROS_INFO("path_opt_replan_local contains %lu points", path_opt_replan_local.size());
         for (size_t i = 0; i < path_opt_replan_local.size(); ++i) {
@@ -194,16 +183,16 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             double local_wx = local_point.x() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.x;
             double local_wy = local_point.y() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.y;
             Eigen::Vector2d local_world_point(local_wx, local_wy);
-            ROS_INFO("Step 1: Local World Point: (%.2f, %.2f)", local_wx, local_wy); // Step 1 로그 추가
+            ROS_INFO("Step 1: Local World Point: (%.2f, %.2f)", local_wx, local_wy);
 
             // 2. Local -> Global (odom frame -> map frame)
             geometry_msgs::PoseStamped global_pose = localToGlobal(local_world_point, *local_costmap_msg, "odom", tf_buffer);
-            ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y); // Step 2 로그 추가
+            ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
 
             // 3. world to map using costmap
             unsigned int mx, my;
             if (costmap->worldToMap(global_pose.pose.position.x, global_pose.pose.position.y, mx, my)) {
-                ROS_INFO("Step 3: Map Coordinates (mx, my): (%d, %d)", mx, my);  // Step 3 로그 추가
+                ROS_INFO("Step 3: Map Coordinates (mx, my): (%d, %d)", mx, my);
 
                 global_pose.pose.position.x = mx;
                 global_pose.pose.position.y = my;
@@ -218,8 +207,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             }
         }
 
-        // plan_opt_replan = convertVector2dToPoseStamped(path_opt_replan);
-        ROS_INFO("2.4");
         // 3. plan_[pin_point_idx + 1] ~ plan_[plan_.back()]
         if (pin_point_idx < plan.size() - 1) {
             plan_final.insert(plan_final.end(), plan.begin() + pin_point_idx + 1, plan.end());
@@ -246,7 +233,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         replanning_mode = false;
         return true;
-    } else {
+    } 
+    // Minimum curvature planning
+    else {
         ROS_INFO("Normal planning mode.");
         start_ = start;
         goal_ = goal;
@@ -271,9 +260,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         if (a_star_success) {
             ROS_INFO("Initial A* planning is successful.");
-
             publishPath(plan_publisher_a_star, a_star_plan_world);
-            // plan = a_star_plan_world.poses;
         } else {
             ROS_WARN("Initial A* planning failed.");
         }
@@ -297,7 +284,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std::vector<int> opt_pin_point_indices = pin_point_result.first;
         geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
 
-        // Final plan - make it uniform
+        // Final plan - make opt_path uniform
         std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
         std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
@@ -312,7 +299,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         pin_points_publisher.publish(updated_pin_point_list);
         pin_point_indices_publisher.publish(indices_msg);
 
-        // Velocity Profile
+        // Calculate velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
@@ -545,16 +532,14 @@ geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, con
     double origin_y = local_costmap_msg.info.origin.position.y;
     double resolution = local_costmap_msg.info.resolution;
 
-    // 로컬 좌표를 'local_pose'에 넣습니다.
     local_pose.pose.position.x = local_point.x();
     local_pose.pose.position.y = local_point.y();
     local_pose.pose.position.z = 0.0;
     local_pose.pose.orientation.w = 1.0;
-    local_pose.header.frame_id = target_frame;  // 로컬 프레임 (예: 'odom') 사용
-    local_pose.header.stamp = ros::Time::now();  // 현재 시간으로 스탬프 설정
+    local_pose.header.frame_id = target_frame;
+    local_pose.header.stamp = ros::Time::now();
 
     try {
-        // 'target_frame'에서 'map'으로 좌표 변환을 수행합니다. (예: odom -> map)
         tf_buffer.transform(local_pose, global_pose, "map", ros::Duration(1.0));
 
         ROS_INFO("Transformed local pose to global pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
@@ -571,15 +556,12 @@ Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msg
     geometry_msgs::PoseStamped local_pose;
     Eigen::Vector2d local_point;
 
-    // 'global_point'를 'global_pose'에 넣습니다.
     global_pose.pose.position.x = global_point.x();
     global_pose.pose.position.y = global_point.y();
     global_pose.pose.position.z = 0.0;
-    global_pose.header.frame_id = "map";  // 'map' 프레임 사용
-    global_pose.header.stamp = ros::Time::now();  // 현재 시간으로 스탬프 설정
-
+    global_pose.header.frame_id = "map";
+    global_pose.header.stamp = ros::Time::now();
     try {
-        // 'map'에서 'target_frame'으로 좌표 변환을 수행합니다. (예: map -> odom)
         tf_buffer.transform(global_pose, local_pose, target_frame, ros::Duration(1.0));
 
         local_point.x() = local_pose.pose.position.x;

@@ -4,8 +4,6 @@ footprint: [[-0.1, -0.2],
             [ 0.5,  0.2],
             [-0.1,  0.2]]
 
-
-# Unknown area configuration
 track_unknown_space: true
 
 global_frame: map

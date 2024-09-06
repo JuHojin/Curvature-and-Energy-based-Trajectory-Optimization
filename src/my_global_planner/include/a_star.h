@@ -3,14 +3,13 @@
 #define A_STAR_H
 
 #include <ros/ros.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <costmap_2d/costmap_2d_ros.h>
 #include <memory>
 #include <vector>
 #include <queue>
 #include <map>
 #include <unordered_map>
-
+#include <costmap_2d/costmap_2d_ros.h>
+#include <geometry_msgs/PoseStamped.h>
 #include "my_global_planner.h"
 
 namespace basic_planner {
