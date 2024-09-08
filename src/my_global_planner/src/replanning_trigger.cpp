@@ -246,29 +246,15 @@ private:
 
         if (replanning_bound_idx_ < pin_points_world_.poses.size()) {
             geometry_msgs::Pose point_to_publish = pin_points_world_.poses[replanning_bound_idx_];
+            geometry_msgs::Point position = point_to_publish.position;
+            geometry_msgs::Quaternion orientation;
+            orientation.w = 1.0;
 
-            // Create a red marker for the point
-            visualization_msgs::Marker red_point_marker;
-            red_point_marker.header.frame_id = "map";
-            red_point_marker.header.stamp = ros::Time::now();
-            red_point_marker.ns = "replanning_trigger";
-            red_point_marker.id = replanning_bound_idx_;
-            red_point_marker.type = visualization_msgs::Marker::SPHERE;
-            red_point_marker.action = visualization_msgs::Marker::ADD;
-
-            red_point_marker.pose.position.x = point_to_publish.position.x;
-            red_point_marker.pose.position.y = point_to_publish.position.y;
-            red_point_marker.pose.position.z = point_to_publish.position.z;
-            red_point_marker.pose.orientation.w = 1.0;
-
-            red_point_marker.scale.x = 0.3;
-            red_point_marker.scale.y = 0.3;
-            red_point_marker.scale.z = 0.3;
-
-            red_point_marker.color.r = 1.0;
-            red_point_marker.color.g = 0.0;
-            red_point_marker.color.b = 0.0;
-            red_point_marker.color.a = 1.0;
+            // Red sphere marker
+            visualization_msgs::Marker red_point_marker = createMarker(
+                "map", "replanning_trigger", replanning_bound_idx_, 
+                position, orientation, "SPHERE", {0.3, 0.3, 0.3}, {1.0, 0.0, 0.0, 1.0}
+            );
 
             line_pub_.publish(red_point_marker);
         } else {
@@ -387,63 +373,35 @@ private:
     }
 
     void publishLineMarker(const geometry_msgs::Point& start, const geometry_msgs::Point& end) {
-        visualization_msgs::Marker line_marker;
-        line_marker.header.frame_id = "map";
-        line_marker.header.stamp = ros::Time::now();
-        line_marker.ns = "replanning_trigger";
-        line_marker.id = 0;
-        line_marker.type = visualization_msgs::Marker::LINE_STRIP;
-        line_marker.action = visualization_msgs::Marker::ADD;
-
-        line_marker.scale.x = 0.05;
-        line_marker.color.r = 1.0;
-        line_marker.color.g = 0.0;
-        line_marker.color.b = 0.0;
-        line_marker.color.a = 1.0;
-
-        geometry_msgs::Point p_start, p_end;
-
-        p_start.x = start.x;
-        p_start.y = start.y;
-        p_start.z = start.z;
-
-        p_end.x = end.x;
-        p_end.y = end.y;
-        p_end.z = end.z;
-
         geometry_msgs::Quaternion identity_quat;
-        identity_quat.x = 0.0;
-        identity_quat.y = 0.0;
-        identity_quat.z = 0.0;
         identity_quat.w = 1.0;
 
-        line_marker.points.push_back(p_start);
-        line_marker.points.push_back(p_end);
+        visualization_msgs::Marker line_marker = createMarker(
+            "map", "replanning_trigger", 0, 
+            start, identity_quat, "LINE_STRIP", {0.05, 0.05, 0.05}, {1.0, 0.0, 0.0, 1.0}
+        );
+
+        line_marker.points.push_back(start);
+        line_marker.points.push_back(end);
 
         line_pub_.publish(line_marker);
     }
 
+
     void publishAllPinPoints() {
-        visualization_msgs::Marker points_marker;
-        points_marker.header.frame_id = "map";
-        points_marker.header.stamp = ros::Time::now();
-        points_marker.ns = "pin_points";
-        points_marker.id = 1;
-        points_marker.type = visualization_msgs::Marker::POINTS;
-        points_marker.action = visualization_msgs::Marker::ADD;
+        for (size_t i = 0; i < pin_points_world_.poses.size(); ++i) {
+            geometry_msgs::Point position = pin_points_world_.poses[i].position;
+            geometry_msgs::Quaternion orientation;
+            orientation.w = 1.0;
 
-        points_marker.scale.x = 0.1;
-        points_marker.scale.y = 0.1;
-        points_marker.color.r = 0.0;
-        points_marker.color.g = 1.0;
-        points_marker.color.b = 0.0;
-        points_marker.color.a = 1.0;
+            // Green point marker
+            visualization_msgs::Marker points_marker = createMarker(
+                "map", "pin_points", i, 
+                position, orientation, "SPHERE", {0.1, 0.1, 0.1}, {0.0, 1.0, 0.0, 1.0}
+            );
 
-        for (const auto& pose : pin_points_world_.poses) {
-            points_marker.points.push_back(pose.position);
+            pin_points_pub_.publish(points_marker);
         }
-
-        pin_points_pub_.publish(points_marker);
     }
 
     void worldToMap(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double wx, double wy, double& mx, double& my) {
@@ -463,6 +421,46 @@ private:
         wx = mx * resolution + origin_x;
         wy = my * resolution + origin_y;
     }
+
+    visualization_msgs::Marker createMarker(
+        const std::string& frame_id, const std::string& ns, int id, 
+        const geometry_msgs::Point& position, const geometry_msgs::Quaternion& orientation,
+        const std::string& marker_type, const std::array<double, 3>& scale, 
+        const std::array<double, 4>& color, const std::string& action = "ADD") {
+
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = ros::Time::now();
+        marker.ns = ns;
+        marker.id = id;
+        
+        if (marker_type == "SPHERE") {
+            marker.type = visualization_msgs::Marker::SPHERE;
+        } else if (marker_type == "LINE_STRIP") {
+            marker.type = visualization_msgs::Marker::LINE_STRIP;
+        }
+
+        if (action == "ADD") {
+            marker.action = visualization_msgs::Marker::ADD;
+        } else if (action == "DELETE") {
+            marker.action = visualization_msgs::Marker::DELETE;
+        }
+
+        marker.pose.position = position;
+        marker.pose.orientation = orientation;
+
+        marker.scale.x = scale[0];
+        marker.scale.y = scale[1];
+        marker.scale.z = scale[2];
+
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = color[3];
+
+        return marker;
+    }
+
 };
 
 int main(int argc, char** argv) {
