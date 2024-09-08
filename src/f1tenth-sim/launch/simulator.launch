@@ -6,9 +6,9 @@
   <arg         name           = 'car_name'
                default        = 'car_1'/>
   <arg         name           = 'x_pos'
-               default        = '0.0'/> <!-- 2.5 -->
+               default        = '-13'/> <!-- 2.5 -->
   <arg         name           = 'y_pos'
-               default        = '-7.0'/>
+               default        = '0'/>
   <arg         name           = 'z_pos'
                default        = '0.05'/>
   <arg         name           = 'run_gazebo'
