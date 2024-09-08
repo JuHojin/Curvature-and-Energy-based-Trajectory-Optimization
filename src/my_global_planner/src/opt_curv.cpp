@@ -366,30 +366,41 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
 
     int last_valid_d = 0;
 
+    // Replanning
     if (use_local_costmap) {
-    const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;
+        const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;
 
-    if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
-        ROS_ERROR("Point (%d, %d) is out of local costmap bounds.", map_x, map_y);
-        return Constant::DEV_MAX;
-    }
-
-    for (int d = 0; d < Constant::DEV_MAX; ++d) {
-        int new_map_x = map_x + static_cast<int>(d * dx);
-        int new_map_y = map_y + static_cast<int>(d * dy);
-
-        if (new_map_x < 0 || new_map_y < 0 || new_map_x >= costmap_msg->info.width || new_map_y >= costmap_msg->info.height) {
-            break;
+        if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
+            ROS_WARN("Point (%d, %d) is out of local costmap bounds.", map_x, map_y);
+            return Constant::DEV_MAX;
         }
 
-        int index = new_map_y * costmap_msg->info.width + new_map_x;
-        if (costmap_msg->data[index] >= Constant::OBSTACLE_INFLATION) {
-            break;
-        }
+        bool found_valid_point = false;
 
-        last_valid_d = d;
+        for (int d = 0; d < Constant::DEV_MAX; ++d) {
+            int new_map_x = static_cast<int>(point.x() + d * dx);
+            int new_map_y = static_cast<int>(point.y() + d * dy);
+
+            if (new_map_x < 0 || new_map_y < 0 || new_map_x >= costmap_msg->info.width || new_map_y >= costmap_msg->info.height) {
+                break;
+            }
+
+            bool is_valid_point = true;
+            int index = new_map_y * costmap_msg->info.width + new_map_x;
+            if (costmap_msg->data[index] >= Constant::OBSTACLE_INFLATION) {
+                is_valid_point = false;
+            }
+
+            if (is_valid_point) {
+                last_valid_d = d;
+                found_valid_point = true;
+            } else if (found_valid_point) {
+                break;
+            }
         }
-    } else {
+    } 
+    // Normal planning
+    else {
         if (!costmap) {
             ROS_WARN("Global costmap is not available.");
             return Constant::DEV_MAX;
@@ -403,21 +414,30 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
             return Constant::DEV_MAX;
         }
 
+        bool found_valid_point = false;
+
         for (int d = 0; d < Constant::DEV_MAX; ++d) {
-            unsigned int new_map_x = map_x + static_cast<int>(d * dx);
-            unsigned int new_map_y = map_y + static_cast<int>(d * dy);
+            int new_map_x = static_cast<int>(point.x() + d * dx);
+            int new_map_y = static_cast<int>(point.y() + d * dy);
 
-            if (new_map_x >= size_x || new_map_y >= size_y) {
+            if (new_map_x < 0 || new_map_y < 0 || new_map_x >= size_x || new_map_y >= size_y) {
                 break;
             }
 
+            bool is_valid_point = true;
             if (costmap->getCost(new_map_x, new_map_y) >= Constant::OBSTACLE_INFLATION) {
-                break;
+                is_valid_point = false;
             }
 
-            last_valid_d = d;
+            if (is_valid_point) {
+                last_valid_d = d;
+                found_valid_point = true;
+            } else if (found_valid_point) {
+                break;
+            }
         }
     }
+
 
     return last_valid_d;
 }

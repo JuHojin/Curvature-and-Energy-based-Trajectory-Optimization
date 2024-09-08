@@ -6,6 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Post Smooth Path1
+        - /Uniform Path1
         - /Optimizing Path1
         - /Final Path1
         - /Replan Path1
@@ -93,22 +95,22 @@ Visualization Manager:
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: true
+      Enabled: false
       Name: Local Cost Map
       Topic: /move_base/local_costmap/costmap
       Unreliable: false
       Use Timestamp: false
-      Value: true
+      Value: false
     - Alpha: 0.699999988079071
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: true
+      Enabled: false
       Name: Map
       Topic: /map
       Unreliable: false
       Use Timestamp: false
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -171,7 +173,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 78; 154; 6
-      Enabled: false
+      Enabled: true
       Head Diameter: 0.05999999865889549
       Head Length: 0.10000000149011612
       Length: 0.30000001192092896
@@ -189,15 +191,15 @@ Visualization Manager:
       Shaft Length: 0.05999999865889549
       Topic: /move_base/MyGlobalPlanner/plan/a_star_plan
       Unreliable: false
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 25; 255; 0
-      Enabled: false
+      Enabled: true
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
+      Length: 0.10000000149011612
       Line Style: Lines
       Line Width: 0.029999999329447746
       Name: Post Smooth Path
@@ -206,20 +208,20 @@ Visualization Manager:
         Y: 0
         Z: 0
       Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.029999999329447746
+      Pose Style: Axes
+      Radius: 0.009999999776482582
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/post_smooth
       Unreliable: false
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 196; 160; 0
-      Enabled: false
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
+      Enabled: true
+      Head Diameter: 0.029999999329447746
+      Head Length: 0.019999999552965164
       Length: 0.30000001192092896
       Line Style: Lines
       Line Width: 0.029999999329447746
@@ -229,18 +231,18 @@ Visualization Manager:
         Y: 0
         Z: 0
       Pose Color: 255; 85; 255
-      Pose Style: None
+      Pose Style: Arrows
       Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
+      Shaft Diameter: 0.009999999776482582
+      Shaft Length: 0.009999999776482582
       Topic: /move_base/MyGlobalPlanner/plan/uniform
       Unreliable: false
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
-      Color: 32; 74; 135
-      Enabled: false
+      Color: 0; 255; 0
+      Enabled: true
       Head Diameter: 0.10000000149011612
       Head Length: 0.10000000149011612
       Length: 0.30000001192092896
@@ -252,18 +254,18 @@ Visualization Manager:
         Y: 0
         Z: 0
       Pose Color: 255; 85; 255
-      Pose Style: Axes
+      Pose Style: Arrows
       Radius: 0.029999999329447746
       Shaft Diameter: 0.05000000074505806
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/opt
       Unreliable: false
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
       Color: 239; 41; 41
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.10000000149011612
       Head Length: 0.10000000149011612
       Length: 0.30000001192092896
@@ -281,7 +283,7 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/final
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -402,7 +404,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/line_marker
       Name: Replanning Line
       Namespaces:
-        replanning_trigger: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -410,7 +412,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/pin_points_marker
       Name: Pin Point
       Namespaces:
-        pin_points: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -461,25 +463,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 27.657161712646484
+      Distance: 4.097316741943359
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.9220831394195557
-        Y: 7.412150859832764
-        Z: -1.325338363647461
+        X: -0.7247639298439026
+        Y: 13.521858215332031
+        Z: -1.2628530263900757
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.5547963380813599
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.712296962738037
+      Yaw: 4.717297077178955
     Saved: ~
 Window Geometry:
   Displays:
@@ -497,5 +499,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1869
-  X: 824
-  Y: 148
+  X: 2106
+  Y: 141

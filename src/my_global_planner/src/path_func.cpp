@@ -53,7 +53,7 @@ bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStam
     abs_dy *= 2;
 
     for (; n > 0; --n) {
-        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION)
+        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION_INIT)
             return false;
 
         if (x_error > 0) {
@@ -183,11 +183,11 @@ std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::P
 
     while (i < plan.size()) {
         ++i;
-        if (!isClearLine(new_plan.back(), plan[i]))
+        if (!isClearLine(new_plan.back(), plan[i])) {
             new_plan.push_back(plan[i-1]);
+        }
     
     }
-    // new_plan.push_back(plan[i]);
     new_plan.push_back(plan.back());
 
     updateOrientatoin(new_plan);
