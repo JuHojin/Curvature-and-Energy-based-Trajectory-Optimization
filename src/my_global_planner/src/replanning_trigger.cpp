@@ -6,6 +6,7 @@
 #include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Path.h>
+#include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <visualization_msgs/Marker.h>
@@ -21,6 +22,7 @@ public:
         global_costmap_sub_ = nh_.subscribe("/move_base/global_costmap/costmap", 1, &ReplanningTriggerNode::globalCostmapCallback, this);
         local_costmap_sub_ = nh_.subscribe("/move_base/local_costmap/costmap", 1, &ReplanningTriggerNode::localCostmapCallback, this);
         amcl_pose_sub_ = nh_.subscribe("/amcl_pose", 1, &ReplanningTriggerNode::amclPoseCallback, this);
+        velocity_sub_ = nh_.subscribe("/car_1/base/odom", 1, &ReplanningTriggerNode::velocityCallback, this);
         final_plan_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/plan/final", 1, &ReplanningTriggerNode::finalPlanCallback, this);
 
         pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
@@ -42,7 +44,7 @@ public:
             updateCurrentIndex();
             updateReplanningIndex();
             updateStartAndAheadIndex();
-            ROS_WARN("replanning idx: %d", replanning_bound_idx_);
+            ROS_INFO("replanning bound idx: %d", replanning_bound_idx_);
             checkForReplanning();
             publishReplanningIndices();
             std_msgs::Bool msg;
@@ -67,6 +69,7 @@ private:
     ros::Subscriber global_costmap_sub_;
     ros::Subscriber local_costmap_sub_;
     ros::Subscriber amcl_pose_sub_;
+    ros::Subscriber velocity_sub_;
     ros::Subscriber final_plan_sub_;
 
     bool trigger_replanning_ = false;
@@ -74,6 +77,8 @@ private:
     int current_idx_ = -1;
     int start_idx_ = -1;
     int ahead_idx_ = -1;
+    double linear_velocity_ = 0.0;
+
     geometry_msgs::PoseArray pin_points_;
     geometry_msgs::PoseArray pin_points_world_;
     std::vector<int> pin_point_indices_tmp;
@@ -83,6 +88,13 @@ private:
     geometry_msgs::PointStamped current_pose_;
     nav_msgs::Path final_plan_;
     tf::TransformListener tf_listener_;
+
+    void velocityCallback(const nav_msgs::Odometry::ConstPtr& msg) {
+        double linear_velocity_x = msg->twist.twist.linear.x;
+        double linear_velocity_y = msg->twist.twist.linear.y;
+        linear_velocity_ = std::hypot(linear_velocity_x, linear_velocity_y);
+        ROS_INFO("Current Linear Velocity: %.2f", linear_velocity_);
+    }
 
     void pinPointCallback(const geometry_msgs::PoseArray::ConstPtr& msg) {
         if (!global_costmap_) {
@@ -129,7 +141,7 @@ private:
         current_pose_.point.y = msg->pose.pose.position.y;
         current_pose_.point.z = msg->pose.pose.position.z;
         current_pose_.header = msg->header;
-        ROS_INFO("Received AMCL pose.");
+        // ROS_INFO("Received AMCL pose.");
     }
 
     void finalPlanCallback(const nav_msgs::Path::ConstPtr& msg) {
@@ -167,11 +179,10 @@ private:
     }
 
     void updateStartAndAheadIndex() {
-        double velocity = 3.0;
-        double time = 1.0;
-
-        start_idx_ = current_idx_ + static_cast<int>(velocity * time);
-        ahead_idx_ = current_idx_ + 2 * static_cast<int>(velocity * time);
+        double time = 5.0;
+        int min_gap = 2;
+        start_idx_ = current_idx_ + std::max(static_cast<int>(linear_velocity_ * time), min_gap);
+        ahead_idx_ = current_idx_ + 2 * std::max(static_cast<int>(linear_velocity_ * time), min_gap);
 
         publishStartAndAheadPoints();
     }
@@ -215,9 +226,9 @@ private:
         }
         indices_msg.data.push_back(replanning_idx);
 
-        ROS_INFO("current_idx_: %d, start_idx_: %d, ahead_idx_: %d, replanning_idx: %d", 
+        ROS_INFO("\ncurrent_idx_: %d, start_idx_: %d, ahead_idx_: %d, replanning_idx: %d", 
                 current_idx_, start_idx_, ahead_idx_, replanning_idx);
-        ROS_WARN("REPLAN IDX: %d", replanning_bound_idx_);
+        // ROS_INFO("REPLAN IDX: %d", replanning_bound_idx_);
         replanning_indices_pub_.publish(indices_msg);
     }
 
@@ -256,7 +267,7 @@ private:
                 "SPHERE", {0.2, 0.2, 0.2}, {1.0, 0.0, 0.0, 1.0}, "DELETE"
             );
             marker_array.markers.push_back(delete_marker);
-            ROS_INFO("Deleted marker for point %zu", i);
+            // ROS_INFO("Deleted marker for point %zu", i);
         }
 
         // Add markers for points after the replanning bound index
@@ -266,13 +277,13 @@ private:
                 geometry_msgs::Quaternion(), "SPHERE", {0.2, 0.2, 0.2}, {1.0, 0.0, 0.0, 1.0}, "ADD"
             );
             marker_array.markers.push_back(add_marker);
-            ROS_INFO("Added marker for point %zu: (%.2f, %.2f, %.2f)", i, 
-                add_marker.pose.position.x, add_marker.pose.position.y, add_marker.pose.position.z);
+            // ROS_INFO("Added marker for point %zu: (%.2f, %.2f, %.2f)", i, 
+            //     add_marker.pose.position.x, add_marker.pose.position.y, add_marker.pose.position.z);
         }
 
         // Publish the entire MarkerArray (add and delete markers)
         valid_pin_points_pub_.publish(marker_array);
-        ROS_INFO("Published %zu markers (including deleted ones)", marker_array.markers.size());
+        // ROS_INFO("Published %zu markers (including deleted ones)", marker_array.markers.size());
     }
 
     void checkForReplanning() {
@@ -310,14 +321,14 @@ private:
                 double my = (pin_point_y_odom - local_costmap_y) / local_costmap_->info.resolution;
 
                 if (mx < 0 || my >= local_costmap_->info.width || mx < 0 || my >= local_costmap_->info.height) {
-                    ROS_INFO("Pin point[%d] is (%f, %f) out of local costmap bounds (%d, %d), skipping this point.", i, mx, my, local_costmap_->info.width, local_costmap_->info.height);
+                    // ROS_INFO("Pin point[%d] is (%f, %f) out of local costmap bounds (%d, %d), skipping this point.", i, mx, my, local_costmap_->info.width, local_costmap_->info.height);
                     continue;
                 }
 
                 int index = static_cast<int>(my) * local_costmap_->info.width + static_cast<int>(mx);
 
                 if (local_costmap_->data[index] != 0) {
-                    ROS_INFO("Pin point[%d] is in an obstacle, inflation layer, or unknown region, skipping this point.", i);
+                    // ROS_INFO("Pin point[%d] is in an obstacle, inflation layer, or unknown region, skipping this point.", i);
                     continue;
                 }
 
