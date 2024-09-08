@@ -23,7 +23,8 @@ namespace Constant {
     constexpr double INIT_VELOCITY = 0;
 
     // Pin point
-    constexpr int MIDPOINT_SELECT = 3;
+    constexpr int NEIGHBOR_RANGE = 30;
+    constexpr int PINPOINT_SELECT_METHOD = 3;
 
     // Map: Obstacle
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 100;

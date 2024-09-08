@@ -54,7 +54,6 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
 
     ros::NodeHandle nh;
     replanning_trigger_sub = nh.subscribe("/move_base/MyGlobalPlanner/replanning_trigger", 1, &MyGlobalPlanner::replanningTriggerCallback, this);
-    // pin_point_indices_sub_ = nh.subscribe("/move_base/MyGlobalPlanner/pin_point_indices", 1, &MyGlobalPlanner::pinPointIndicesCallback, this);
     replanning_indices_sub = nh.subscribe("/replanning_trigger/replanning_index", 1, &MyGlobalPlanner::replanningIndicesCallback, this);
     local_costmap_sub = nh.subscribe("/move_base/local_costmap/costmap", 10, &MyGlobalPlanner::localCostmapCallback, this);
     ROS_INFO("MyGlobalPlanner initialized successfully.");
@@ -398,19 +397,38 @@ std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path) {
     std::vector<int> pin_point_indices;
     std::vector<double> distances(path.size() - 1);
+    std::vector<double> average_distance(path.size() - 1);
+    int neighbor_range = Constant::NEIGHBOR_RANGE;
 
     // Calculate distances between consecutive points
-    for (size_t i = 0; i < path.size() - 1; ++i) {
-        distances[i] = (path[i + 1] - path[i]).norm();
+    for (size_t i = 1; i < path.size() - 1; ++i) {
+        distances[i] = (path[i] - path[i - 1]).norm();
     }
 
-    std::cout << "distance length: " << distances.size() << std::endl;
-    double average_distance = std::accumulate(distances.begin(), distances.end(), 0.0) / distances.size() * 0.8;  // Tighter bound
+    // Global average method
+    // double average_distance = std::accumulate(distances.begin(), distances.end(), 0.0) / distances.size() * 0.8;  // Tighter bound
 
+    // Local average method
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        double sum_distances = 0.0;
+        int valid_neighbors = 0;
+
+        int start_idx = std::max(static_cast<int>(i) - neighbor_range, 0);
+        int end_idx = std::min(static_cast<int>(i) + neighbor_range, static_cast<int>(path.size()) - 1);
+
+        for (int j = start_idx; j <= end_idx - 1; ++j) {
+            sum_distances += distances[j];
+            valid_neighbors++;
+        }
+
+        average_distance[i] = sum_distances / valid_neighbors;
+
+    }
+    
     // Find indices where distance is below average and group them
     std::vector<int> below_avg_indices;
     for (size_t i = 0; i < distances.size(); ++i) {
-        if (distances[i] < average_distance) {
+        if (distances[i] < average_distance[i]) {
             below_avg_indices.push_back(i);
         }
     }
@@ -429,7 +447,7 @@ std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std
         sections.push_back(current_section);
     }
 
-    int method = Constant::MIDPOINT_SELECT;
+    int method = Constant::PINPOINT_SELECT_METHOD;
 
     // Method 1: midpoint of each section
     if (method == 1) {
@@ -471,6 +489,7 @@ std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std
         }
     }
 
+    // Ensure the last point is included
     int last_idx = distances.size() - 1;
     if (pin_point_indices.back() != last_idx) {
         pin_point_indices.push_back(last_idx);
