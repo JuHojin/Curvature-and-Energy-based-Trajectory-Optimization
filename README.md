@@ -176,6 +176,41 @@ echo "source ~/catkin_ws/devel_isolated/setup.bash" >> ~/.bashrc
 ### Control
 TBD
 
+### Mapping (Optional)
+If you want to add a new map, you need to generate `.yaml` and `.pgm` files. First, copy the configuration, launch, and URDF files to the designated directories.
+
+``` bash
+cd ~/catkin_ws
+cp mapping/my_robot.launch src/cartographer_ros/cartographer_ros/launch
+cp mapping/my_robot.lua src/cartographer_ros/cartographer_ros/configuration_files
+cp mapping/my_robot.urdf src/cartographer_ros/cartographer_ros/urdf
+```
+
+Before launching the simulator, modify the world_name argument in the simulator.launch file to match your new map name. You can find this file at `src/f1tenth-sim/launch/simulator.launch`. Once you have updated the `world_name` argument, you can launch the F1Tenth simulator.
+
+```bash
+roslaunch f1tenth-sim simulator.launch 
+```
+
+Now, launch the Cartographer node to start mapping.
+
+```bash
+roslaunch cartographer_ros my_robot.launch
+```
+You can control the vehicle using the keyboard with the following command. And Monitor the progress of the mapping process in RViz by checking the `map` topic.
+
+```bash
+rosrun f1tenth-sim keyboard_teleop.py car_1
+```
+
+Once the mapping is complete, save the new map by running the following command. This will generate a `custom_map.pgm` image file and a corresponding `custom_map.yaml` file in the specified directory.
+
+```bash
+rosrun  map_server map_saver -f ~/catkin_ws/src/f1tenth-sim/maps/custom_map
+```
+
+Finally, update the `map_filename` argument to `custom_map.yaml` at `src/f1tenth-sim/launch/localization.launch` to use your new map in localization.
+
 #### Troubleshooting: Gazebo Connection Error with Ignition Fuel
 When running Gazebo, you might encounter an SSL certification error with the Ignition Fuel service:
 
