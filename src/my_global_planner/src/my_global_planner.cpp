@@ -124,7 +124,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std::vector<geometry_msgs::PoseStamped> a_star_plan;
 
         bool a_star_success = a_star_planner.makePlan(start_x, start_y, goal_x, goal_y, a_star_plan);
-        updateOrientatoin(a_star_plan);
+        updateOrientation(a_star_plan);
         nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
 
         if (a_star_success) {
@@ -284,6 +284,8 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             }
         }
 
+        updateOrientation(plan_opt_replan);
+
         // 3. plan_[pin_point_idx + 1] ~ plan_[plan_.back()]
         if (pin_point_idx < plan.size() - 1) {
             plan_final.insert(plan_final.end(), plan.begin() + pin_point_idx + 1, plan.end());
@@ -389,7 +391,7 @@ std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::
         plan.push_back(poseStamped);
     }
 
-    updateOrientatoin(plan);
+    updateOrientation(plan);
 
     return plan;
 }

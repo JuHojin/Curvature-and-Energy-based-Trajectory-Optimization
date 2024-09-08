@@ -9,7 +9,7 @@
 namespace my_global_planner {
 
 // Utilities
-void updateOrientatoin(std::vector<geometry_msgs::PoseStamped>& plan);
+void updateOrientation(std::vector<geometry_msgs::PoseStamped>& plan);
 bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStamped& end_pose);
 bool isClearLine(int start_x, int start_y, int end_x, int end_y);
 Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);

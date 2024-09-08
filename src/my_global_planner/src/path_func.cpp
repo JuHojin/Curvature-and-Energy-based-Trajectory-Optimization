@@ -8,7 +8,7 @@
 
 namespace my_global_planner {
 
-void updateOrientatoin(std::vector<geometry_msgs::PoseStamped>& plan) {
+void updateOrientation(std::vector<geometry_msgs::PoseStamped>& plan) {
     if (plan.size() < 2) {
         ROS_WARN("Fail updating orientation: at least two points are required.");
         return;
@@ -190,7 +190,7 @@ std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::P
     }
     new_plan.push_back(plan.back());
 
-    updateOrientatoin(new_plan);
+    updateOrientation(new_plan);
 
     return new_plan;
 }
@@ -238,7 +238,7 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
     // Uncomment due to including corner point (end point)
     new_plan.push_back(plan.back());
     
-    updateOrientatoin(new_plan);
+    updateOrientation(new_plan);
 
     return new_plan;
 }

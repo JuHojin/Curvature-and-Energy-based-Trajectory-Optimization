@@ -36,7 +36,7 @@ public:
     }
 
     void run() {
-        ros::Rate rate(1.0);
+        ros::Rate rate(10.0);
         while (ros::ok()) {
             publishAllPinPoints();
             updateCurrentIndex();
@@ -389,9 +389,14 @@ private:
         geometry_msgs::Quaternion identity_quat;
         identity_quat.w = 1.0;
 
+        geometry_msgs::Point zero_point;
+        zero_point.x = 0.0;
+        zero_point.y = 0.0;
+        zero_point.z = 0.0;
+
         visualization_msgs::Marker line_marker = createMarker(
             "map", "replanning_trigger", 0, 
-            start, identity_quat, "LINE_STRIP", {0.05, 0.05, 0.05}, {1.0, 0.0, 0.0, 1.0}
+            zero_point, identity_quat, "LINE_STRIP", {0.05, 0.05, 0.05}, {1.0, 0.0, 0.0, 1.0}, "ADD"
         );
 
         line_marker.points.push_back(start);
@@ -459,8 +464,18 @@ private:
             marker.action = visualization_msgs::Marker::DELETE;
         }
 
-        marker.pose.position = position;
-        marker.pose.orientation = orientation;
+        if (marker_type != "LINE_STRIP") {
+            marker.pose.position = position;
+            marker.pose.orientation = orientation;
+        } else {
+            marker.pose.position.x = 0.0;
+            marker.pose.position.y = 0.0;
+            marker.pose.position.z = 0.0;
+            marker.pose.orientation.x = 0.0;
+            marker.pose.orientation.y = 0.0;
+            marker.pose.orientation.z = 0.0;
+            marker.pose.orientation.w = 1.0;
+        }
 
         marker.scale.x = scale[0];
         marker.scale.y = scale[1];
@@ -473,6 +488,7 @@ private:
 
         return marker;
     }
+
 
 };
 
