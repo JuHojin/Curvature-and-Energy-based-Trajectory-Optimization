@@ -18,7 +18,7 @@ ros::Publisher plan_publisher_bnd_L_replan;
 ros::Publisher plan_publisher_bnd_R_replan;
 ros::Publisher plan_publisher_opt;
 
-std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local) {
+std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer) {
     
     std::vector<Eigen::Vector2d> new_path;
     Eigen::VectorXd alpha;
@@ -37,29 +37,104 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Boundaries
         Boundaries Boundaries = getBoundaries(path, normal_vectors, local);
-        std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
-        std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
-        nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
-        nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
 
-        // if (local) {
-        //     // TODO: boundary update (Boundaries.left_bnd.points, Boundaries.right_bnd.points)
-        //     std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
-        //     std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
+        // Publish Boundary Lines
+        // Normal planning
+        if (!local){
+            std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
+            nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
+            nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
+            publishPath(plan_publisher_bnd_L, left_bnd_world);
+            publishPath(plan_publisher_bnd_R, right_bnd_world);
+        }
+        // Replanning
+        else {
+            std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
+            std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
 
-        //     std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
-        //     std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
-        //     nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
-        //     nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
-        //     publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
-        //     publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
-        // } else {
-        //     publishPath(plan_publisher_bnd_L, left_bnd_world);
-        //     publishPath(plan_publisher_bnd_R, right_bnd_world);
-        // }
-        publishPath(plan_publisher_bnd_L, left_bnd_world);
-        publishPath(plan_publisher_bnd_R, right_bnd_world);
+            // 1. Local costmap (map) -> Local costmap (world)
+            for (auto& point : left) {
+                double local_wx = point.x() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.x;
+                double local_wy = point.y() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.y;
+                point.x() = local_wx;
+                point.y() = local_wy;
+            }
 
+            for (auto& point : right) {
+                double local_wx = point.x() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.x;
+                double local_wy = point.y() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.y;
+                point.x() = local_wx;
+                point.y() = local_wy;
+            }
+
+            // 2. Local costmap (world) -> Global costmap (world) using TF (transform odom to map)
+            for (auto& point : left) {
+                geometry_msgs::PointStamped local_point, global_point;
+                local_point.point.x = point.x();
+                local_point.point.y = point.y();
+                local_point.header.frame_id = "odom";
+                local_point.header.stamp = ros::Time(0);
+                
+                try {
+                    // Use tf2 to transform point from "odom" frame to "map" frame
+                    geometry_msgs::TransformStamped transform_stamped = tf_buffer.lookupTransform("map", "odom", ros::Time(0), ros::Duration(1.0));
+                    tf2::doTransform(local_point, global_point, transform_stamped);
+                    point.x() = global_point.point.x;
+                    point.y() = global_point.point.y;
+                } catch (tf2::TransformException& ex) {
+                    ROS_WARN("Transform error: %s", ex.what());
+                }
+            }
+
+            for (auto& point : right) {
+                geometry_msgs::PointStamped local_point, global_point;
+                local_point.point.x = point.x();
+                local_point.point.y = point.y();
+                local_point.header.frame_id = "odom";
+                local_point.header.stamp = ros::Time(0);
+                
+                try {
+                    // Use tf2 to transform point from "odom" frame to "map" frame
+                    geometry_msgs::TransformStamped transform_stamped = tf_buffer.lookupTransform("map", "odom", ros::Time(0), ros::Duration(1.0));
+                    tf2::doTransform(local_point, global_point, transform_stamped);
+                    point.x() = global_point.point.x;
+                    point.y() = global_point.point.y;
+                } catch (tf2::TransformException& ex) {
+                    ROS_WARN("Transform error: %s", ex.what());
+                }
+            }
+
+            // 3. Global costmap (world) -> Global costmap (map)
+            for (auto& point : left) {
+                unsigned int mx, my;
+                if (costmap->worldToMap(point.x(), point.y(), mx, my)) {
+                    point.x() = mx;
+                    point.y() = my;
+                } else {
+                    ROS_WARN("Point out of global costmap bounds.");
+                }
+            }
+
+            for (auto& point : right) {
+                unsigned int mx, my;
+                if (costmap->worldToMap(point.x(), point.y(), mx, my)) {
+                    point.x() = mx;
+                    point.y() = my;
+                } else {
+                    ROS_WARN("Point out of global costmap bounds.");
+                }
+            }
+
+            // Convert the points to PoseStamped and publish
+            std::vector<geometry_msgs::PoseStamped> left_bnd_plan = convertVector2dToPoseStamped(left);
+            std::vector<geometry_msgs::PoseStamped> right_bnd_plan = convertVector2dToPoseStamped(right);
+            nav_msgs::Path left_bnd_replan_world = producePathMapToWorld(left_bnd_plan);
+            nav_msgs::Path right_bnd_replan_world = producePathMapToWorld(right_bnd_plan);
+            publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
+            publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
+        }
+        
         // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];

@@ -23,10 +23,10 @@ namespace my_global_planner {
 costmap_2d::Costmap2D* costmap = nullptr;
 nav_msgs::OccupancyGrid::ConstPtr local_costmap_msg;
 
-MyGlobalPlanner::MyGlobalPlanner() : tf_listener(tf_buffer) {}
+MyGlobalPlanner::MyGlobalPlanner() : tf_buffer_(), tf_listener_(tf_buffer_, true) {}
 
 MyGlobalPlanner::MyGlobalPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
-    : tf_listener(tf_buffer, true) {
+    : tf_buffer_(), tf_listener_(tf_buffer_, true) {
     initialize(name, costmap_ros);
 }
 MyGlobalPlanner::~MyGlobalPlanner() {}
@@ -43,6 +43,8 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_uniform = private_nh.advertise<nav_msgs::Path>("plan/uniform", 1);
     plan_publisher_bnd_L = private_nh.advertise<nav_msgs::Path>("plan/bnd_L", 1);
     plan_publisher_bnd_R = private_nh.advertise<nav_msgs::Path>("plan/bnd_R", 1);
+    plan_publisher_bnd_L_replan = private_nh.advertise<nav_msgs::Path>("plan/bnd_L_replan", 1);
+    plan_publisher_bnd_R_replan = private_nh.advertise<nav_msgs::Path>("plan/bnd_R_replan", 1);
     plan_publisher_opt = private_nh.advertise<nav_msgs::Path>("plan/opt", 1);
     plan_publisher_last_opt = private_nh.advertise<nav_msgs::Path>("plan/last_opt", 1);
     plan_publisher_final = private_nh.advertise<nav_msgs::Path>("plan/final", 1);
@@ -146,7 +148,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
         std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
-        std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false);
+        std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false, tf_buffer_);
 
         // Pin point selection (based on opt_path)
         auto pin_point_result = pin_point_select(opt_path);
@@ -237,7 +239,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             ROS_INFO("Global Point in World Frame: (%.2f, %.2f)", wx, wy);
 
             // 2. Global -> Local (map frame -> odom frame)
-            Eigen::Vector2d local_point = globalToLocal(global_point, *local_costmap_msg, "odom", tf_buffer);
+            Eigen::Vector2d local_point = globalToLocal(global_point, *local_costmap_msg, "odom", tf_buffer_);
 
             // 3. world to map using local_costmap_msg
             int local_map_x = static_cast<int>((local_point.x() - local_costmap_msg->info.origin.position.x) / local_costmap_msg->info.resolution);
@@ -247,7 +249,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             path_replan_local.push_back(Eigen::Vector2d(local_map_x, local_map_y));
         }
 
-        path_opt_replan_local = optimize_min_curvature(path_replan_local, Constant::MAX_OPT_ITER, true);
+        path_opt_replan_local = optimize_min_curvature(path_replan_local, Constant::MAX_OPT_ITER, true, tf_buffer_);
 
         ROS_INFO("path_opt_replan_local contains %lu points", path_opt_replan_local.size());
         for (size_t i = 0; i < path_opt_replan_local.size(); ++i) {
@@ -263,7 +265,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             ROS_INFO("Step 1: Local World Point: (%.2f, %.2f)", local_wx, local_wy);
 
             // 2. Local -> Global (odom frame -> map frame)
-            geometry_msgs::PoseStamped global_pose = localToGlobal(local_world_point, *local_costmap_msg, "odom", tf_buffer);
+            geometry_msgs::PoseStamped global_pose = localToGlobal(local_world_point, *local_costmap_msg, "odom", tf_buffer_);
             ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
 
             // 3. world to map using costmap
@@ -545,7 +547,7 @@ std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(
     return {updated_pin_point_list, updated_pin_point_indices};
 }
 
-geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer) {
+geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer_) {
     geometry_msgs::PoseStamped local_pose;
     geometry_msgs::PoseStamped global_pose;
 
@@ -561,7 +563,7 @@ geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, con
     local_pose.header.stamp = ros::Time::now();
 
     try {
-        tf_buffer.transform(local_pose, global_pose, "map", ros::Duration(1.0));
+        tf_buffer_.transform(local_pose, global_pose, "map", ros::Duration(1.0));
 
         ROS_INFO("Transformed local pose to global pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
     } catch (tf2::TransformException& ex) {
@@ -572,7 +574,7 @@ geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, con
 }
 
 
-Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer) {
+Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer_) {
     geometry_msgs::PoseStamped global_pose;
     geometry_msgs::PoseStamped local_pose;
     Eigen::Vector2d local_point;
@@ -583,7 +585,7 @@ Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msg
     global_pose.header.frame_id = "map";
     global_pose.header.stamp = ros::Time::now();
     try {
-        tf_buffer.transform(global_pose, local_pose, target_frame, ros::Duration(1.0));
+        tf_buffer_.transform(global_pose, local_pose, target_frame, ros::Duration(1.0));
 
         local_point.x() = local_pose.pose.position.x;
         local_point.y() = local_pose.pose.position.y;

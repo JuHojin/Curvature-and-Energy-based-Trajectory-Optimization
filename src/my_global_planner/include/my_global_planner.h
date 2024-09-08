@@ -18,6 +18,7 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include "a_star.h"
 
 namespace my_global_planner {
@@ -63,15 +64,15 @@ public:
                   std::vector<geometry_msgs::PoseStamped>& plan);
     void replanningIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
 
-    tf2_ros::Buffer tf_buffer;
-    tf2_ros::TransformListener tf_listener;
-
 private:
     geometry_msgs::PoseStamped start_;
     geometry_msgs::PoseStamped goal_;
     std::vector<geometry_msgs::PoseStamped> plan_;
     bool replanning_mode;
     std::vector<int> received_pin_point_indices_;
+
+    tf2_ros::Buffer tf_buffer_;
+    tf2_ros::TransformListener tf_listener_;
 
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;

@@ -14,7 +14,7 @@
 
 namespace my_global_planner {
 
-std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local);
+std::vector<Eigen::Vector2d> optimize_min_curvature(const std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer);
 
 Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path);
 std::vector<Eigen::Vector2d> getNormalVectors(const std::vector<Eigen::Vector2d>& path);
