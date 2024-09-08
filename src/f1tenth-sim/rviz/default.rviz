@@ -6,11 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /Post Smooth Path1
-        - /Uniform Path1
-        - /Optimizing Path1
-        - /Final Path1
-        - /Replan Path1
+        - /MarkerArray1
+        - /MarkerArray1/Status1
       Splitter Ratio: 0.5
     Tree Height: 776
   - Class: rviz/Selection
@@ -353,58 +350,12 @@ Visualization Manager:
       Topic: /move_base/MyGlobalPlanner/plan/bnd_R
       Unreliable: false
       Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz/Path
-      Color: 239; 41; 41
-      Enabled: false
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: DWA Global Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic: /move_base/DWAPlannerROS/global_plan
-      Unreliable: false
-      Value: false
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz/Path
-      Color: 92; 53; 102
-      Enabled: false
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: DWA Local Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.029999999329447746
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic: /move_base/DWAPlannerROS/local_plan
-      Unreliable: false
-      Value: false
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /replanning_trigger/line_marker
       Name: Replanning Line
       Namespaces:
-        replanning_trigger: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -417,7 +368,7 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Class: rviz/PointStamped
-      Color: 204; 41; 204
+      Color: 32; 74; 135
       Enabled: true
       History Length: 1
       Name: Start Point
@@ -427,13 +378,21 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Class: rviz/PointStamped
-      Color: 204; 41; 204
+      Color: 252; 233; 79
       Enabled: true
       History Length: 1
       Name: Ahead Point
       Radius: 0.20000000298023224
       Topic: /replanning_trigger/ahead_point
       Unreliable: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /replanning_trigger/valid_pin_points
+      Name: MarkerArray
+      Namespaces:
+        valid_pin_points: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -463,16 +422,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 28.779314041137695
+      Distance: 32.07524871826172
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.34836825728416443
-        Y: 6.98876428604126
-        Z: -1.3359016180038452
+        X: -2.4893202781677246
+        Y: 5.997207164764404
+        Z: -1.3765946626663208
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

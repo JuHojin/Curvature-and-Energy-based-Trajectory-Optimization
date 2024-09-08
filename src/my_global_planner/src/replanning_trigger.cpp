@@ -9,6 +9,7 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 #include <tf/transform_listener.h>
 #include "constant.h"
 
@@ -24,6 +25,7 @@ public:
 
         pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
         line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
+        valid_pin_points_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/replanning_trigger/valid_pin_points", 1);
         start_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/start_point", 1);
         ahead_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/ahead_point", 1);
         trigger_pub_ = nh_.advertise<std_msgs::Bool>("/move_base/MyGlobalPlanner/replanning_trigger", 1);
@@ -56,6 +58,7 @@ private:
     ros::Publisher trigger_pub_;
     ros::Publisher line_pub_;
     ros::Publisher pin_points_pub_;
+    ros::Publisher valid_pin_points_pub_;
     ros::Subscriber pin_point_list_sub_;
     ros::Subscriber pin_point_indices_sub_;
     ros::Publisher start_point_pub_;
@@ -235,31 +238,41 @@ private:
         // }
         // ROS_INFO("%s", ss.str().c_str());
         
+        // Update replanning bound index
         if (!(pin_point_indices_tmp.empty()) && current_idx_ >= pin_point_indices_tmp.back()) {
             pin_point_indices_tmp.pop_back();
             ++replanning_bound_idx_;
             if (replanning_bound_idx_ >= pin_points_.poses.size()) {
                 replanning_bound_idx_ = pin_points_.poses.size() - 1;
             }
-            ROS_INFO("Replnanning_idx: %d", replanning_bound_idx_);
         }
 
-        if (replanning_bound_idx_ < pin_points_world_.poses.size()) {
-            geometry_msgs::Pose point_to_publish = pin_points_world_.poses[replanning_bound_idx_];
-            geometry_msgs::Point position = point_to_publish.position;
-            geometry_msgs::Quaternion orientation;
-            orientation.w = 1.0;
-
-            // Red sphere marker
-            visualization_msgs::Marker red_point_marker = createMarker(
-                "map", "replanning_trigger", replanning_bound_idx_, 
-                position, orientation, "SPHERE", {0.3, 0.3, 0.3}, {1.0, 0.0, 0.0, 1.0}
+        visualization_msgs::MarkerArray marker_array;
+        
+        // Delete markers for points before the replanning bound index
+        for (size_t i = 0; i < replanning_bound_idx_; ++i) {
+            visualization_msgs::Marker delete_marker = createMarker(
+                "map", "valid_pin_points", i, geometry_msgs::Point(), geometry_msgs::Quaternion(), 
+                "SPHERE", {0.2, 0.2, 0.2}, {1.0, 0.0, 0.0, 1.0}, "DELETE"
             );
-
-            line_pub_.publish(red_point_marker);
-        } else {
-            ROS_WARN("Replanning index out of bounds, cannot publish marker.");
+            marker_array.markers.push_back(delete_marker);
+            ROS_INFO("Deleted marker for point %zu", i);
         }
+
+        // Add markers for points after the replanning bound index
+        for (size_t i = replanning_bound_idx_; i < pin_points_world_.poses.size(); ++i) {
+            visualization_msgs::Marker add_marker = createMarker(
+                "map", "valid_pin_points", i, pin_points_world_.poses[i].position, 
+                geometry_msgs::Quaternion(), "SPHERE", {0.2, 0.2, 0.2}, {1.0, 0.0, 0.0, 1.0}, "ADD"
+            );
+            marker_array.markers.push_back(add_marker);
+            ROS_INFO("Added marker for point %zu: (%.2f, %.2f, %.2f)", i, 
+                add_marker.pose.position.x, add_marker.pose.position.y, add_marker.pose.position.z);
+        }
+
+        // Publish the entire MarkerArray (add and delete markers)
+        valid_pin_points_pub_.publish(marker_array);
+        ROS_INFO("Published %zu markers (including deleted ones)", marker_array.markers.size());
     }
 
     void checkForReplanning() {
