@@ -81,7 +81,7 @@ void MyGlobalPlanner::replanningTriggerCallback(const std_msgs::Bool::ConstPtr& 
 
         replanning_mode = false;
     } else {
-        ROS_INFO("No Replanning");
+        // ROS_INFO("No Replanning");
     }
 }
 
@@ -114,9 +114,26 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Convert start and goal point: (Real) World -> Map
         unsigned int start_x, start_y, goal_x, goal_y;
-        if (!costmap->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y) ||
-            !costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y)) {
-            ROS_ERROR("Start or goal coordinates are out of bounds.");
+        bool valid_start = costmap->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y);
+        bool valid_goal = costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y);
+        
+        // Check if start and goal is out of bound
+        if (!valid_start || !valid_goal) {
+            ROS_WARN("Start or goal coordinates are out of bounds. Unable to proceed with A*.");
+            return false;
+        }
+
+        // Check if start is valid
+        unsigned char start_cost = costmap->getCost(start_x, start_y);
+        if (start_cost >= Constant::OBSTACLE_INFLATION) {
+            ROS_WARN("Start position is inside an obstacle or inflation layer. Skipping replanning.");
+            return false;
+        }
+
+        // Check if goal is valid
+        unsigned char goal_cost = costmap->getCost(goal_x, goal_y);
+        if (goal_cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+            ROS_WARN("Goal position is inside an obstacle or inflation layer. Skipping planning.");
             return false;
         }
 
@@ -311,6 +328,14 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             const geometry_msgs::PoseStamped& pose = plan[i];
             ROS_INFO("Pose %lu: Position (x: %f, y: %f)", i, pose.pose.position.x, pose.pose.position.y);
         }
+
+        // Calculate velocity Profile
+        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(plan_world);
+        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        Eigen::VectorXd velocity_profile = velocity_result.first;
+        Eigen::MatrixXd velocity_constraints = velocity_result.second;
+        publishVelocityProfile(profile_publisher, velocity_profile);
+        publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
         replanning_mode = false;
         return true;

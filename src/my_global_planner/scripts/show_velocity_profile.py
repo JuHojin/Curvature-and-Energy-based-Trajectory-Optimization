@@ -25,10 +25,12 @@ def plot_velocity_profile():
             max_vel = velocity_constraints[:len(velocity_profile)]
             lat_acc = velocity_constraints[len(velocity_profile):]
 
+            y_max = max(max_vel) * 1.2
+
             plt.plot(max_vel, "r-", label="max vel")
             plt.plot(lat_acc, "g-", label="lat acc")
             plt.plot(velocity_profile, "b-", label="result")
-            plt.ylim(0, 1)
+            plt.ylim(0,y_max)
             plt.title("Velocity Profiles")
             plt.xlabel("Path index")
             plt.ylabel("Speed [m/s]")
