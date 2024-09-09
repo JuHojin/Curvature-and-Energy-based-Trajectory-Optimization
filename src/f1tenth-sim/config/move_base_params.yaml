@@ -18,11 +18,11 @@ controller_patience: 15.0   # Seconds to wait without a valid control before rec
 
 # Planner Settings
 planner_frequency: 0.0      # Frequency in Hz to run the global planning loop
-planner_patience: 5.0       # Seconds to wait for a valid plan before recovery
+planner_patience: 10000.0       # Seconds to wait for a valid plan before recovery
 max_planning_retries: -1    # Number of planning retries before recovery; -1 for infinite
 
 # Recovery and Oscillation
-recovery_behavior_enabled: true  # Enable or disable recovery behaviors
+recovery_behavior_enabled: false  # Enable or disable recovery behaviors
 conservative_reset_dist: 3.0     # Distance in meters to clear obstacles from the costmap
 clearing_rotation_allowed: true  # Allow in-place rotation during recovery
 oscillation_timeout: 0.0         # Timeout in seconds for oscillation; 0 for infinite

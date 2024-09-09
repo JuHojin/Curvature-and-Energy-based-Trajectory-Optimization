@@ -5,7 +5,7 @@
 namespace Constant {
     // Boundary
     constexpr unsigned int DEV_MAX = 15;
-    constexpr unsigned int DEV_DOT = 2;
+    constexpr unsigned int DEV_DOT = 1;
 
     // Spacing
     constexpr unsigned int UNIFORM_STEP = 5;
@@ -18,8 +18,8 @@ namespace Constant {
 
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 20 / 3.6;
-    constexpr double MAX_AX = 0.05;
-    constexpr double MAX_AY = 0.5;
+    constexpr double MAX_AX = 0.1;
+    constexpr double MAX_AY = 1;
     constexpr double INIT_VELOCITY = 0;
 
     // Pin point

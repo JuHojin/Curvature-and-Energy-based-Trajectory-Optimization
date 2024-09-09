@@ -139,9 +139,9 @@ def precompute_gain_tables(v_min, v_max, num_points):
     K_values = {}
 
     L = 0.325 # tmp wheel base
-    Q = np.array([[100, 0],
+    Q = np.array([[300, 0],
                   [0, 100]])
-    R = np.array([[2500]])
+    R = np.array([[2600]])
 
     for v in v_values:
         A = np.array([[0, v], [0, 0]])
@@ -183,6 +183,12 @@ def main():
 
             # rospy.loginfo("Loaded waypoints: %d" % len(wpts_x))
             rospy.loginfo("velocity profile: {}".format(auto_control.velocity_profile))
+
+            # update look ahead based on current velocity
+            auto_control.wpt_look_ahead = int(0.5 * ego_vx)
+            if (auto_control.wpt_look_ahead < 1):
+                auto_control.wpt_look_ahead = 1
+            rospy.loginfo('look ahead {}'.format(auto_control.wpt_look_ahead))
 
             # Lateral error calculation (cross-track error, yaw error)
             error_y, error_yaw, near_idx = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=auto_control.wpt_look_ahead)
