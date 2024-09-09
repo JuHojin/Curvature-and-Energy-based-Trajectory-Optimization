@@ -15,12 +15,12 @@ def constraints_callback(msg):
     velocity_constraints = msg.data
 
 def plot_velocity_profile():
-    # plt.ion()  # Enable interactive mode
+    plt.ion()
     plt.figure()
 
     while not rospy.is_shutdown():
         if velocity_profile and velocity_constraints:
-            plt.clf()  # Clear the current figure
+            plt.clf()
 
             max_vel = velocity_constraints[:len(velocity_profile)]
             lat_acc = velocity_constraints[len(velocity_profile):]
@@ -35,12 +35,14 @@ def plot_velocity_profile():
             plt.legend()
             plt.grid(True)
 
-            plt.pause(0.1)  # Pause for a brief moment to allow plot update
+            plt.pause(0.1)
 
 if __name__ == "__main__":
     rospy.init_node('velocity_profile_plotter', anonymous=True)
-    rospy.Subscriber("velocity_profile", Float64MultiArray, profile_callback)
-    rospy.Subscriber("velocity_constraints", Float64MultiArray, constraints_callback)
+
+    rospy.Subscriber("/move_base/MyGlobalPlanner/velocity_profile", Float64MultiArray, profile_callback)
+    rospy.Subscriber("/move_base/MyGlobalPlanner/velocity_constraints", Float64MultiArray, constraints_callback)
     
     plot_velocity_profile()
+
     rospy.spin()
