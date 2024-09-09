@@ -138,8 +138,8 @@ def precompute_gain_tables(v_min, v_max, num_points):
     v_values = np.linspace(v_min, v_max, num_points)
     K_values = {}
 
-    L = 0.3 # tmp wheel base
-    Q = np.array([[10, 0],
+    L = 0.325 # tmp wheel base
+    Q = np.array([[100, 0],
                   [0, 100]])
     R = np.array([[2500]])
 
