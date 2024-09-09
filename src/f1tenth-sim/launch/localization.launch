@@ -19,8 +19,8 @@
         <param name="max_particles" value="2000"/> <!-- Reduced number for potentially faster updates -->
         <param name="update_min_d" value="0.01"/> <!-- Smaller distance threshold for more frequent updates -->
         <param name="update_min_a" value="0.05"/> <!-- Smaller angle threshold for more frequent updates -->
-        <param name="initial_pose_x" value="0.0"/>
-        <param name="initial_pose_y" value="0.0"/>
+        <param name="initial_pose_x" value="-13.0"/>
+        <param name="initial_pose_y" value="7.0"/>
         <param name="initial_pose_a" value="0.0"/>
         <remap from="scan" to="/car_1/scan"/>
     </node>

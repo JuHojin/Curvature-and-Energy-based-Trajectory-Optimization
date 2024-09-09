@@ -23,11 +23,14 @@ public:
         local_costmap_sub_ = nh_.subscribe("/move_base/local_costmap/costmap", 1, &ReplanningTriggerNode::localCostmapCallback, this);
         amcl_pose_sub_ = nh_.subscribe("/amcl_pose", 1, &ReplanningTriggerNode::amclPoseCallback, this);
         velocity_sub_ = nh_.subscribe("/car_1/base/odom", 1, &ReplanningTriggerNode::velocityCallback, this);
-        final_plan_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/plan/final", 1, &ReplanningTriggerNode::finalPlanCallback, this);
+        final_plan_world_sub_ = nh_.subscribe("/move_base/MyGlobalPlanner/plan/final", 1, &ReplanningTriggerNode::finalPlanCallback, this);
 
         pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
-        line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
         valid_pin_points_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/replanning_trigger/valid_pin_points", 1);
+        fixed_start_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_start_points_marker", 1);
+        fixed_ahead_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_ahead_points_marker", 1);
+        fixed_pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_pin_points_marker", 1);
+        line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
         start_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/start_point", 1);
         ahead_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/ahead_point", 1);
         trigger_pub_ = nh_.advertise<std_msgs::Bool>("/move_base/MyGlobalPlanner/replanning_trigger", 1);
@@ -38,7 +41,7 @@ public:
     }
 
     void run() {
-        ros::Rate rate(10.0);
+        ros::Rate rate(30.0);
         while (ros::ok()) {
             publishAllPinPoints();
             updateCurrentIndex();
@@ -57,20 +60,24 @@ public:
 
 private:
     ros::NodeHandle nh_;
-    ros::Publisher trigger_pub_;
-    ros::Publisher line_pub_;
     ros::Publisher pin_points_pub_;
     ros::Publisher valid_pin_points_pub_;
-    ros::Subscriber pin_point_list_sub_;
-    ros::Subscriber pin_point_indices_sub_;
+    ros::Publisher fixed_start_points_pub_;
+    ros::Publisher fixed_ahead_points_pub_;
+    ros::Publisher fixed_pin_points_pub_;
+    ros::Publisher line_pub_;
     ros::Publisher start_point_pub_;
     ros::Publisher ahead_point_pub_;
+    ros::Publisher trigger_pub_;
     ros::Publisher replanning_indices_pub_;
+    
+    ros::Subscriber pin_point_list_sub_;
+    ros::Subscriber pin_point_indices_sub_;
     ros::Subscriber global_costmap_sub_;
     ros::Subscriber local_costmap_sub_;
     ros::Subscriber amcl_pose_sub_;
     ros::Subscriber velocity_sub_;
-    ros::Subscriber final_plan_sub_;
+    ros::Subscriber final_plan_world_sub_;
 
     bool trigger_replanning_ = false;
     int replanning_bound_idx_ = 1;
@@ -86,7 +93,7 @@ private:
     nav_msgs::OccupancyGrid::ConstPtr global_costmap_;
     nav_msgs::OccupancyGrid::ConstPtr local_costmap_;
     geometry_msgs::PointStamped current_pose_;
-    nav_msgs::Path final_plan_;
+    nav_msgs::Path final_plan_world_;
     tf::TransformListener tf_listener_;
 
     void velocityCallback(const nav_msgs::Odometry::ConstPtr& msg) {
@@ -145,13 +152,14 @@ private:
     }
 
     void finalPlanCallback(const nav_msgs::Path::ConstPtr& msg) {
-        final_plan_ = *msg;
+        final_plan_world_ = *msg;
+
         replanning_bound_idx_ = 1;
         ROS_INFO("Received final plan.");
     }
 
     void updateCurrentIndex() {
-        if (final_plan_.poses.empty()) {
+        if (final_plan_world_.poses.empty()) {
             ROS_WARN("Final plan is empty, cannot find the nearest point.");
             current_idx_ = -1;
             return;
@@ -163,9 +171,9 @@ private:
         double current_x = current_pose_.point.x;
         double current_y = current_pose_.point.y;
 
-        for (int i = 0; i < final_plan_.poses.size(); ++i) {
-            double plan_x = final_plan_.poses[i].pose.position.x;
-            double plan_y = final_plan_.poses[i].pose.position.y;
+        for (int i = 0; i < final_plan_world_.poses.size(); ++i) {
+            double plan_x = final_plan_world_.poses[i].pose.position.x;
+            double plan_y = final_plan_world_.poses[i].pose.position.y;
 
             double distance = std::sqrt(std::pow(plan_x - current_x, 2) + std::pow(plan_y - current_y, 2));
 
@@ -188,22 +196,22 @@ private:
     }
 
     void publishStartAndAheadPoints() {
-        if (start_idx_ >= 0 && start_idx_ < final_plan_.poses.size()) {
+        if (start_idx_ >= 0 && start_idx_ < final_plan_world_.poses.size()) {
             geometry_msgs::PointStamped start_point;
             start_point.header.frame_id = "map";
             start_point.header.stamp = ros::Time::now();
-            start_point.point = final_plan_.poses[start_idx_].pose.position;
+            start_point.point = final_plan_world_.poses[start_idx_].pose.position;
 
             start_point_pub_.publish(start_point);
         } else {
             ROS_WARN("Start index out of bounds, cannot publish start point.");
         }
 
-        if (ahead_idx_ >= 0 && ahead_idx_ < final_plan_.poses.size()) {
+        if (ahead_idx_ >= 0 && ahead_idx_ < final_plan_world_.poses.size()) {
             geometry_msgs::PointStamped ahead_point;
             ahead_point.header.frame_id = "map";
             ahead_point.header.stamp = ros::Time::now();
-            ahead_point.point = final_plan_.poses[ahead_idx_].pose.position;
+            ahead_point.point = final_plan_world_.poses[ahead_idx_].pose.position;
 
             ahead_point_pub_.publish(ahead_point);
         } else {
@@ -274,7 +282,7 @@ private:
         for (size_t i = replanning_bound_idx_; i < pin_points_world_.poses.size(); ++i) {
             visualization_msgs::Marker add_marker = createMarker(
                 "map", "valid_pin_points", i, pin_points_world_.poses[i].position, 
-                geometry_msgs::Quaternion(), "SPHERE", {0.2, 0.2, 0.2}, {1.0, 0.0, 0.0, 1.0}, "ADD"
+                geometry_msgs::Quaternion(), "SPHERE", {0.2, 0.2, 0.2}, {0.0, 1.0, 0.0, 1.0}, "ADD"
             );
             marker_array.markers.push_back(add_marker);
             // ROS_INFO("Added marker for point %zu: (%.2f, %.2f, %.2f)", i, 
@@ -299,55 +307,81 @@ private:
             return;
         }
 
+        // Obtain ahead point 
+        geometry_msgs::PointStamped global_ahead_point_world, local_ahead_point_world;
+        geometry_msgs::Point global_ahead_point_map, local_ahead_point_map;
+        global_ahead_point_world.header.frame_id = "map";
+        global_ahead_point_world.header.stamp = ros::Time(0);
+        global_ahead_point_world.point = final_plan_world_.poses[ahead_idx_].pose.position;
+
+        // global_ahead_point_world -> global_ahead_point_map
+        worldToMap(global_costmap_, global_ahead_point_world.point.x, global_ahead_point_world.point.y, global_ahead_point_map.x, global_ahead_point_map.y);
+
+        // global_ahead_point_world -> local_ahead_point_world
+        try {
+            // Transform global_ahead_position from "map" frame to "odom" frame (or any other local frame)
+            tf_listener_.transformPoint("odom", global_ahead_point_world, local_ahead_point_world);
+        } catch (tf2::TransformException& ex) {
+            ROS_ERROR("Failed to transform ahead point from 'map' to 'odom': %s", ex.what());
+            return;
+        }
+
+        // local_ahead_point_world -> local_ahead_point_map
+        worldToMap(local_costmap_, local_ahead_point_world.point.x, local_ahead_point_world.point.y, local_ahead_point_map.x, local_ahead_point_map.y);
+
         for (int i = pin_points_world_.poses.size() - 1; i >= replanning_bound_idx_; --i) {
-            geometry_msgs::PointStamped global_point, local_point;
-            global_point.point.x = pin_points_world_.poses[i].position.x;
-            global_point.point.y = pin_points_world_.poses[i].position.y;
-            global_point.point.z = 0;
-            global_point.header.frame_id = "map";
-            global_point.header.stamp = ros::Time(0);
+            geometry_msgs::PointStamped global_pin_point_world, local_pin_point_world;
+            geometry_msgs::Point global_pin_point_map, local_pin_point_map;
 
+            global_pin_point_world.header.frame_id = "map";
+            global_pin_point_world.header.stamp = ros::Time(0);
+            global_pin_point_world.point.x = pin_points_world_.poses[i].position.x;
+            global_pin_point_world.point.y = pin_points_world_.poses[i].position.y;
+            global_pin_point_world.point.z = 0;
+            
+            // global_pin_point_world -> local_pin_point_world
             try {
-                tf_listener_.transformPoint("odom", global_point, local_point);
-
-                // world to map conversion
-                double pin_point_x_odom = local_point.point.x;
-                double pin_point_y_odom = local_point.point.y;
-
-                float local_costmap_x = local_costmap_->info.origin.position.x;
-                float local_costmap_y = local_costmap_->info.origin.position.y;
-
-                double mx = (pin_point_x_odom - local_costmap_x) / local_costmap_->info.resolution;
-                double my = (pin_point_y_odom - local_costmap_y) / local_costmap_->info.resolution;
-
-                if (mx < 0 || my >= local_costmap_->info.width || mx < 0 || my >= local_costmap_->info.height) {
-                    // ROS_INFO("Pin point[%d] is (%f, %f) out of local costmap bounds (%d, %d), skipping this point.", i, mx, my, local_costmap_->info.width, local_costmap_->info.height);
-                    continue;
-                }
-
-                int index = static_cast<int>(my) * local_costmap_->info.width + static_cast<int>(mx);
-
-                if (local_costmap_->data[index] != 0) {
-                    // ROS_INFO("Pin point[%d] is in an obstacle, inflation layer, or unknown region, skipping this point.", i);
-                    continue;
-                }
-
-                if (isPathClear(final_plan_.poses[ahead_idx_].pose.position, local_point.point, local_costmap_)) {
-                    if (!isPathClear(final_plan_.poses[ahead_idx_].pose.position, local_point.point, global_costmap_)) {
-                        ROS_INFO("\nTrigger replanning!\n");
-                        trigger_replanning_ = true;
-                        publishLineMarker(final_plan_.poses[ahead_idx_].pose.position, pin_points_world_.poses[i].position);
-                        ++replanning_bound_idx_;
-                        if (replanning_bound_idx_ > pin_points_world_.poses.size()) {
-                            replanning_bound_idx_ = pin_points_world_.poses.size();
-                        }
-                        return;
-                    }
-                }
-
+                tf_listener_.transformPoint("odom", global_pin_point_world, local_pin_point_world);
             } catch (tf2::TransformException& ex) {
-                ROS_WARN("Transform error: %s", ex.what());
+                ROS_ERROR("Transform error: %s", ex.what());
+                return;
+            }
+
+            // local_pin_point_world -> local_pin_point_map
+            worldToMap(local_costmap_, local_pin_point_world.point.x, local_pin_point_world.point.y, local_pin_point_map.x, local_pin_point_map.y);
+
+            if (local_pin_point_map.x < 0 || local_pin_point_map.x >= local_costmap_->info.width || local_pin_point_map.y < 0 || local_pin_point_map.y >= local_costmap_->info.height) {
+                ROS_INFO("Pin point[%d] is (%f, %f) out of local costmap bounds (%d, %d), skipping this point.", i, local_pin_point_map.x, local_pin_point_map.y, local_costmap_->info.width, local_costmap_->info.height);
                 continue;
+            }
+
+            int index = static_cast<int>(local_pin_point_map.y) * local_costmap_->info.width + static_cast<int>(local_pin_point_map.x);
+
+            if (local_costmap_->data[index] != 0) {
+                // ROS_INFO("Pin point[%d] is in an obstacle, inflation layer, or unknown region, skipping this point.", i);
+                continue;
+            }
+
+            if (isPathClear(local_ahead_point_map, local_pin_point_map, local_costmap_)) {
+                ROS_INFO("\nPoint (%d, %d)is CLEAR IN LOCAL COSTMAP\n", static_cast<int>(local_pin_point_map.x), static_cast<int>(local_pin_point_map.y));
+                if (!isPathClear(global_ahead_point_map, global_pin_point_map, global_costmap_)) {
+                    ROS_INFO("\nTrigger replanning!\n");
+                    trigger_replanning_ = true;
+
+                    // visualization
+                    publishLineMarker(final_plan_world_.poses[ahead_idx_].pose.position, pin_points_world_.poses[i].position);
+                    publishMarker(final_plan_world_.poses[start_idx_].pose.position, "fixed_start_points", start_idx_, 0.2, {32.0/255.0, 74.0/255.0, 135.0/255.0, 1.0}, fixed_start_points_pub_);
+                    publishMarker(final_plan_world_.poses[ahead_idx_].pose.position, "fixed_ahead_points", ahead_idx_, 0.2, {252.0/255.0, 233.0/255.0, 79.0/255.0, 1.0}, fixed_ahead_points_pub_);
+                    publishMarker(pin_points_world_.poses[i].position, "fixed_pin_points", i, 0.2, {1.0, 0.0, 0.0, 1.0}, fixed_pin_points_pub_);
+
+                    // update replanning_bound_idx_
+                    ++replanning_bound_idx_;
+                    if (replanning_bound_idx_ > pin_points_world_.poses.size()) {
+                        replanning_bound_idx_ = pin_points_world_.poses.size();
+                    }
+
+                    return;
+                }
             }
         }
 
@@ -356,16 +390,10 @@ private:
     }
 
     bool isPathClear(const geometry_msgs::Point& start, const geometry_msgs::Point& end, const nav_msgs::OccupancyGrid::ConstPtr& costmap) {
-        int width = costmap->info.width;
-        int height = costmap->info.height;
-        double resolution = costmap->info.resolution;
-        double origin_x = costmap->info.origin.position.x;
-        double origin_y = costmap->info.origin.position.y;
-
-        int start_x = static_cast<int>((start.x - origin_x) / resolution);
-        int start_y = static_cast<int>((start.y - origin_y) / resolution);
-        int end_x = static_cast<int>((end.x - origin_x) / resolution);
-        int end_y = static_cast<int>((end.y - origin_y) / resolution);
+        int start_x = static_cast<int>(start.x);
+        int start_y = static_cast<int>(start.y);
+        int end_x = static_cast<int>(end.x);
+        int end_y = static_cast<int>(end.y);
 
 
         int dx = abs(end_x - start_x);
@@ -375,7 +403,7 @@ private:
         int err = dx - dy;
 
         while (start_x != end_x || start_y != end_y) {
-            int index = start_y * width + start_x;
+            int index = start_y * costmap->info.width + start_x;
             if (index >= 0 && index < static_cast<int>(costmap->data.size())) {
                 if (costmap->data[index] > 0) {
                     return false;  // Obstacle exists
@@ -426,7 +454,7 @@ private:
             // Green point marker
             visualization_msgs::Marker points_marker = createMarker(
                 "map", "pin_points", i, 
-                position, orientation, "SPHERE", {0.1, 0.1, 0.1}, {0.0, 1.0, 0.0, 1.0}
+                position, orientation, "SPHERE", {0.15, 0.15, 0.15}, {0.0, 0.0, 0.0, 1.0}
             );
 
             pin_points_pub_.publish(points_marker);
@@ -438,8 +466,8 @@ private:
         double origin_y = costmap->info.origin.position.y;
         double resolution = costmap->info.resolution;
 
-        mx = (wx - origin_x) / resolution;
-        my = (wy - origin_y) / resolution;
+        mx = static_cast<int>((wx - origin_x) / resolution);
+        my = static_cast<int>((wy - origin_y) / resolution);
     }
 
     void mapToWorld(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double mx, double my, double& wx, double& wy) {
@@ -498,6 +526,29 @@ private:
         marker.color.a = color[3];
 
         return marker;
+    }
+
+    void publishMarker(const geometry_msgs::Point& position, const std::string& ns, int id, double scale, const std::array<double, 4>& color, ros::Publisher& pub) {
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = "map";
+        marker.header.stamp = ros::Time::now();
+        marker.ns = ns;
+        marker.id = id;
+        marker.type = visualization_msgs::Marker::SPHERE;
+        marker.action = visualization_msgs::Marker::ADD;
+        marker.pose.position = position;
+        marker.pose.orientation.w = 1.0;
+        
+        marker.scale.x = scale;
+        marker.scale.y = scale;
+        marker.scale.z = scale;
+
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = color[3];
+
+        pub.publish(marker);
     }
 
 

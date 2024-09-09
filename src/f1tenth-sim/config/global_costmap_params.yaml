@@ -19,4 +19,4 @@ plugins:
 
 inflation_layer:
   inflation_radius: 1.0
-  cost_scaling_factor: 5.0
+  cost_scaling_factor: 3.0
