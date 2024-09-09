@@ -96,6 +96,10 @@ bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
     return true;
 }
 
+double calculateDistance(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2) {
+    return (pt2 - pt1).norm();
+}
+
 Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
     double ax = pt1.x(), ay = pt1.y();
     double bx = pt2.x(), by = pt2.y();
@@ -111,67 +115,62 @@ Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2
     }
 }
 
-double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
-    Eigen::Vector2d center_point = getCircumcenter(pt1, pt2, pt3);
+Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
+    int n = path.size();
+    Eigen::VectorXd curvature(n);
 
-    if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
-        return std::numeric_limits<double>::infinity();
-    }
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);
 
-    double R = (pt2 - center_point).norm();
-    return R;
-}
-
-std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
-    int numPoints = path.size();
-    Eigen::VectorXd curvature(numPoints);
-    curvature.setZero();
-    double curvature_square_sum = 0.0;
-    double max_curvature = 0.0;
-
-    for (int j = 1; j < numPoints - 1; ++j) {
-        double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
-        curvature[j] = 1.0 / R;
-        curvature_square_sum += std::pow(curvature[j], 2);
-        if (curvature[j] > max_curvature) {
-            max_curvature = curvature[j];
+        if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
+            curvature(i) = 0.0;
+        } else {
+            double R = calculateDistance(path[i], center_point);
+            if (R != 0.0) {
+                curvature(i) = 1.0 / R;
+            } else {
+                curvature(i) = 0.0;
+            }
         }
     }
-    
-    return {curvature, curvature_square_sum, max_curvature};
-}
 
-Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
-    int numPoints = path.size();
-    Eigen::VectorXd curvature(numPoints);
-    curvature.setZero();
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
 
-    for (int j = 1; j < numPoints - 1; ++j) {
-        double R = getTurningRadius(path[j - 1], path[j], path[j + 1]);
-        curvature[j] = 1.0 / R;
-    }
-    
     return curvature;
 }
 
-Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path) {
-    int numPoints = path.poses.size(); // Use .poses.size() to get the number of points in the path
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg) {
+    int n = path_msg.poses.size();
+    Eigen::VectorXd curvature(n);
 
-    Eigen::VectorXd curvature(numPoints);
-    curvature.setZero();
-
-    for (int j = 1; j < numPoints - 1; ++j) {
-        // Extract the previous, current, and next points from the path
-        Eigen::Vector2d prev_point(path.poses[j - 1].pose.position.x, path.poses[j - 1].pose.position.y);
-        Eigen::Vector2d current_point(path.poses[j].pose.position.x, path.poses[j].pose.position.y);
-        Eigen::Vector2d next_point(path.poses[j + 1].pose.position.x, path.poses[j + 1].pose.position.y);
-
-        // Calculate the turning radius
-        double R = getTurningRadius(prev_point, current_point, next_point);
-
-        // Calculate the curvature (1 / radius)
-        curvature[j] = 1.0 / R;
+    std::vector<Eigen::Vector2d> path;
+    for (const auto& pose : path_msg.poses) {
+        double x = pose.pose.position.x;
+        double y = pose.pose.position.y;
+        path.emplace_back(x, y);
     }
+
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d d1 = path[i] - path[i - 1];
+        Eigen::Vector2d d2 = path[i + 1] - path[i];
+
+        Eigen::Vector2d velocity = (d1 + d2) / 2.0;
+
+        Eigen::Vector2d acceleration = d2 - d1;
+
+        double numerator = std::abs(velocity.x() * acceleration.y() - velocity.y() * acceleration.x());
+        double denominator = std::pow(velocity.squaredNorm(), 1.5);
+
+        if (denominator != 0.0) {
+            curvature(i) = numerator / denominator;
+        } else {
+            curvature(i) = 0.0;
+        }
+    }
+
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
 
     return curvature;
 }

@@ -178,6 +178,11 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
         publishPath(plan_publisher_final, final_plan_world);
 
+        // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
+        //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
+        //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
+        // }
+
         // Update pin points (based on final_plan)
         auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
         geometry_msgs::PoseArray updated_pin_point_list = updated_pin_points.first;
@@ -188,7 +193,11 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         pin_point_indices_publisher.publish(indices_msg);
 
         // Calculate velocity Profile
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
+        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
+        // for (int i = 0; i < curvature.size(); ++i) {
+        //     std::cout << "Curvature[" << i << "]: " << curvature[i] << std::endl;
+        // }
+
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
@@ -330,7 +339,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         }
 
         // Calculate velocity Profile
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(plan_world);
+        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(plan_world);
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
@@ -380,11 +389,17 @@ nav_msgs::Path producePathMapToWorld(std::vector<geometry_msgs::PoseStamped>& pl
         return new_plan;
     }
 
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+
     for (size_t i  = 0; i < plan.size() - 1; ++i) {
 
-        costmap->mapToWorld(plan[i].pose.position.x, plan[i].pose.position.y, world_x, world_y);
-        new_pose.pose.position.x = world_x;
-        new_pose.pose.position.y = world_y;
+        new_pose.pose.position.x = plan[i].pose.position.x * resolution + origin_x;
+        new_pose.pose.position.y = plan[i].pose.position.y * resolution + origin_y;
+        // costmap->mapToWorld(plan[i].pose.position.x, plan[i].pose.position.y, world_x, world_y);
+        // new_pose.pose.position.x = world_x;
+        // new_pose.pose.position.y = world_y;
         new_pose.pose.position.z = 0;
         new_pose.pose.orientation = plan[i].pose.orientation;
 

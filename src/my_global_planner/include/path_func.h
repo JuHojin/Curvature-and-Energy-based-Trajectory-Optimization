@@ -12,11 +12,13 @@ namespace my_global_planner {
 void updateOrientation(std::vector<geometry_msgs::PoseStamped>& plan);
 bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStamped& end_pose);
 bool isClearLine(int start_x, int start_y, int end_x, int end_y);
+double calculateDistance(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2);
 Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);
 double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3);
 std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path);
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg);
 
 // Post Smoothing
 std::vector<geometry_msgs::PoseStamped> postSmooth(std::vector<geometry_msgs::PoseStamped>& plan);
