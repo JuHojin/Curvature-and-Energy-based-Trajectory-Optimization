@@ -23,6 +23,9 @@ namespace my_global_planner {
 costmap_2d::Costmap2D* costmap = nullptr;
 nav_msgs::OccupancyGrid::ConstPtr local_costmap_msg;
 
+// ========================================
+// MyGlobalPlanner Class Init.
+// ========================================
 MyGlobalPlanner::MyGlobalPlanner() : tf_buffer_(), tf_listener_(tf_buffer_, true) {}
 
 MyGlobalPlanner::MyGlobalPlanner(std::string name, costmap_2d::Costmap2DROS* costmap_ros)
@@ -61,7 +64,9 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
 
-
+// ========================================
+// Callback Functions
+// ========================================
 void MyGlobalPlanner::replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg) {
     replanning_mode = msg->data;
     if (replanning_mode) {
@@ -99,6 +104,9 @@ void MyGlobalPlanner::localCostmapCallback(const nav_msgs::OccupancyGrid::ConstP
     // ROS_INFO("Local costmap received with size: %d x %d", msg->info.width, msg->info.height);
 }
 
+// ========================================
+// Main: makePlan
+// ========================================
 bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal, std::vector<geometry_msgs::PoseStamped>& plan) {
 
     if (local_costmap_msg->data.empty()) {
@@ -351,93 +359,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     }
 }
 
-void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg) {
-    path_msg.header.frame_id = "map";
-    path_msg.header.stamp = ros::Time::now();    
-    publisher.publish(path_msg);
-}
-
-void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile) {
-    std_msgs::Float64MultiArray profile_msg;
-    for (int i = 0; i < velocity_profile.size(); ++i) {
-        profile_msg.data.push_back(velocity_profile(i));
-    }
-    profile_pub.publish(profile_msg);
-}
-
-void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints) {
-    std_msgs::Float64MultiArray constraints_msg;
-    for (int i = 0; i < velocity_constraints.rows(); ++i) {
-        for (int j = 0; j < velocity_constraints.cols(); ++j) {
-            constraints_msg.data.push_back(velocity_constraints(i, j));
-        }
-    }
-    constraints_pub.publish(constraints_msg);
-}
-
-nav_msgs::Path producePathMapToWorld(std::vector<geometry_msgs::PoseStamped>& plan) {
-    nav_msgs::Path new_plan;
-    geometry_msgs::PoseStamped new_pose;
-    double world_x, world_y;
-    double next_world_x, next_world_y;
-
-    new_pose.header.frame_id = "map";
-    new_pose.header.stamp = ros::Time::now();
-
-    if (plan.empty()) {
-        ROS_WARN("Fail to produce the path: Empty");
-        return new_plan;
-    }
-
-    double origin_x = costmap->getOriginX();
-    double origin_y = costmap->getOriginY();
-    double resolution = costmap->getResolution();
-
-    for (size_t i  = 0; i < plan.size() - 1; ++i) {
-
-        new_pose.pose.position.x = plan[i].pose.position.x * resolution + origin_x;
-        new_pose.pose.position.y = plan[i].pose.position.y * resolution + origin_y;
-        // costmap->mapToWorld(plan[i].pose.position.x, plan[i].pose.position.y, world_x, world_y);
-        // new_pose.pose.position.x = world_x;
-        // new_pose.pose.position.y = world_y;
-        new_pose.pose.position.z = 0;
-        new_pose.pose.orientation = plan[i].pose.orientation;
-
-        new_plan.poses.push_back(new_pose);
-    }
-
-    return new_plan;
-}
-
-std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan) {
-    std::vector<Eigen::Vector2d> path;
-    path.reserve(plan.size());
-
-    for (const auto& poseStamped : plan) {
-        path.emplace_back(poseStamped.pose.position.x, poseStamped.pose.position.y);
-    }
-
-    return path;
-}
-
-std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& path) {
-    std::vector<geometry_msgs::PoseStamped> plan;
-    plan.reserve(path.size());
-
-    for (const auto& point : path) {
-        geometry_msgs::PoseStamped poseStamped;
-        poseStamped.pose.position.x = point.x();
-        poseStamped.pose.position.y = point.y();
-        poseStamped.pose.position.z = 0.0;
-
-        plan.push_back(poseStamped);
-    }
-
-    updateOrientation(plan);
-
-    return plan;
-}
-
+// ========================================
+// Pin Point Selection
+// ========================================
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path) {
     std::vector<int> pin_point_indices;
     std::vector<double> distances(path.size() - 1);
@@ -587,6 +511,99 @@ std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(
     return {updated_pin_point_list, updated_pin_point_indices};
 }
 
+// ========================================
+// Publish Functions
+// ========================================
+void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg) {
+    path_msg.header.frame_id = "map";
+    path_msg.header.stamp = ros::Time::now();    
+    publisher.publish(path_msg);
+}
+
+void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile) {
+    std_msgs::Float64MultiArray profile_msg;
+    for (int i = 0; i < velocity_profile.size(); ++i) {
+        profile_msg.data.push_back(velocity_profile(i));
+    }
+    profile_pub.publish(profile_msg);
+}
+
+void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints) {
+    std_msgs::Float64MultiArray constraints_msg;
+    for (int i = 0; i < velocity_constraints.rows(); ++i) {
+        for (int j = 0; j < velocity_constraints.cols(); ++j) {
+            constraints_msg.data.push_back(velocity_constraints(i, j));
+        }
+    }
+    constraints_pub.publish(constraints_msg);
+}
+
+// ========================================
+// Convert Functions
+// ========================================
+nav_msgs::Path producePathMapToWorld(std::vector<geometry_msgs::PoseStamped>& plan) {
+    nav_msgs::Path new_plan;
+    geometry_msgs::PoseStamped new_pose;
+    double world_x, world_y;
+    double next_world_x, next_world_y;
+
+    new_pose.header.frame_id = "map";
+    new_pose.header.stamp = ros::Time::now();
+
+    if (plan.empty()) {
+        ROS_WARN("Fail to produce the path: Empty");
+        return new_plan;
+    }
+
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+
+    for (size_t i  = 0; i < plan.size() - 1; ++i) {
+
+        new_pose.pose.position.x = plan[i].pose.position.x * resolution + origin_x;
+        new_pose.pose.position.y = plan[i].pose.position.y * resolution + origin_y;
+        // costmap->mapToWorld(plan[i].pose.position.x, plan[i].pose.position.y, world_x, world_y);
+        // new_pose.pose.position.x = world_x;
+        // new_pose.pose.position.y = world_y;
+        new_pose.pose.position.z = 0;
+        new_pose.pose.orientation = plan[i].pose.orientation;
+
+        new_plan.poses.push_back(new_pose);
+    }
+
+    return new_plan;
+}
+
+std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan) {
+    std::vector<Eigen::Vector2d> path;
+    path.reserve(plan.size());
+
+    for (const auto& poseStamped : plan) {
+        path.emplace_back(poseStamped.pose.position.x, poseStamped.pose.position.y);
+    }
+
+    return path;
+}
+
+std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& path) {
+    std::vector<geometry_msgs::PoseStamped> plan;
+    plan.reserve(path.size());
+
+    for (const auto& point : path) {
+        geometry_msgs::PoseStamped poseStamped;
+        poseStamped.pose.position.x = point.x();
+        poseStamped.pose.position.y = point.y();
+        poseStamped.pose.position.z = 0.0;
+
+        plan.push_back(poseStamped);
+    }
+
+    updateOrientation(plan);
+
+    return plan;
+}
+
 geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer_) {
     geometry_msgs::PoseStamped local_pose;
     geometry_msgs::PoseStamped global_pose;
@@ -612,7 +629,6 @@ geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, con
 
     return global_pose;
 }
-
 
 Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer_) {
     geometry_msgs::PoseStamped global_pose;

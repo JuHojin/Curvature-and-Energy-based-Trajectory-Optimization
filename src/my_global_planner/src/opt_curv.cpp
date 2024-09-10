@@ -18,6 +18,9 @@ ros::Publisher plan_publisher_bnd_L_replan;
 ros::Publisher plan_publisher_bnd_R_replan;
 ros::Publisher plan_publisher_opt;
 
+// ========================================
+// Main
+// ========================================
 std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer) {
     
     std::vector<Eigen::Vector2d> new_path;
@@ -178,6 +181,9 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     return new_path;
 }
 
+// ========================================
+// Path Geometry Extractors
+// ========================================
 Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     int numPoints = path.size();
     int numSplines = numPoints - 1;
@@ -266,85 +272,9 @@ std::vector<Eigen::Vector2d> getNormalVectors(const std::vector<Eigen::Vector2d>
     return normal_vectors;
 }
 
-Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle) {
-    int numPoints = path.size();
-    int numSplines = numPoints - 1;
-
-    if (std::isnan(start_angle)) {
-        Eigen::Vector2d firstSegment = path[1] - path[0];
-        start_angle = std::atan2(firstSegment.y(), firstSegment.x());
-    }
-    if (std::isnan(end_angle)) {
-        Eigen::Vector2d lastSegment = path[numPoints - 1] - path[numPoints - 2];
-        end_angle = std::atan2(lastSegment.y(), lastSegment.x());
-    }
-
-    // Construct extraction matrices
-    Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
-        A_ex_b(i, i * 4 + 1) = 1;
-    }
-    A_ex_b.bottomRightCorner(1, 4) << 0, 1, 2, 3;
-
-    Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
-        A_ex_c(i, i * 4 + 2) = 2;
-    }
-    A_ex_c.bottomRightCorner(1, 4) << 0, 0, 2, 6;
-
-    Eigen::MatrixXd A_inv = A.inverse();
-    Eigen::MatrixXd T_c = A_ex_c * A_inv;
-
-    // Construct reference path matrix
-    Eigen::VectorXd q_x = Eigen::VectorXd::Zero(numSplines * 4);
-    Eigen::VectorXd q_y = Eigen::VectorXd::Zero(numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
-        int j = i * 4;
-        q_x.segment(j, 2) << path[i].x(), path[i + 1].x();
-        q_y.segment(j, 2) << path[i].y(), path[i + 1].y();
-    }
-    q_x(numSplines * 4 - 2) = std::cos(start_angle);
-    q_y(numSplines * 4 - 2) = std::sin(start_angle);
-    q_x(numSplines * 4 - 1) = std::cos(end_angle);
-    q_y(numSplines * 4 - 1) = std::sin(end_angle);
-
-    // Calculate derivatives
-    Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
-    Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
-
-    Eigen::VectorXd x_dot_sq = x_dot.array().square();
-    Eigen::VectorXd y_dot_sq = y_dot.array().square();
-
-    // Calculate curvature denominator
-    Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
-    Eigen::VectorXd curvatures_den = (1.0 / curv_den.array()).matrix();
-
-    Eigen::VectorXd Q_x = curvatures_den.asDiagonal() * y_dot;
-    Eigen::VectorXd Q_y = curvatures_den.asDiagonal() * x_dot;
-
-    Eigen::VectorXd curvature = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
-
-    return curvature;
-}
-
-double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::VectorXd& velocity_profile) {
-    std::vector<Eigen::Vector2d> deltas;
-    for (size_t i = 1; i < path.size(); ++i) {
-        deltas.push_back(path[i] - path[i-1]);
-    }
-
-    std::vector<double> distances(deltas.size());
-    for (size_t i = 0; i < deltas.size(); ++i) {
-        distances[i] = deltas[i].norm();
-    }
-
-    double travel_length = std::accumulate(distances.begin(), distances.end(), 0.0);
-    double avg_vel = velocity_profile.mean();
-    double travel_time = travel_length / avg_vel;
-
-    return travel_time;
-}
-
+// ========================================
+// Boundaries
+// ========================================
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, bool local) {
     Boundaries boundaries;
     size_t n = path.size();
@@ -544,6 +474,9 @@ Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, dou
     return Eigen::Vector2d(point.x() + dx * distance, point.y() + dy * distance);
 }
 
+// ========================================
+// Optimization
+// ========================================
 csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat) {
     // Count nonzeros in the upper triangular part
     int nonzeros = 0;
@@ -823,6 +756,87 @@ std::vector<Eigen::Vector2d> getPathMinCurvature(const std::vector<Eigen::Vector
     return new_path;
 }
 
+// ========================================
+// Utilities
+// ========================================
+Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle) {
+    int numPoints = path.size();
+    int numSplines = numPoints - 1;
+
+    if (std::isnan(start_angle)) {
+        Eigen::Vector2d firstSegment = path[1] - path[0];
+        start_angle = std::atan2(firstSegment.y(), firstSegment.x());
+    }
+    if (std::isnan(end_angle)) {
+        Eigen::Vector2d lastSegment = path[numPoints - 1] - path[numPoints - 2];
+        end_angle = std::atan2(lastSegment.y(), lastSegment.x());
+    }
+
+    // Construct extraction matrices
+    Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
+    for (int i = 0; i < numSplines; ++i) {
+        A_ex_b(i, i * 4 + 1) = 1;
+    }
+    A_ex_b.bottomRightCorner(1, 4) << 0, 1, 2, 3;
+
+    Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
+    for (int i = 0; i < numSplines; ++i) {
+        A_ex_c(i, i * 4 + 2) = 2;
+    }
+    A_ex_c.bottomRightCorner(1, 4) << 0, 0, 2, 6;
+
+    Eigen::MatrixXd A_inv = A.inverse();
+    Eigen::MatrixXd T_c = A_ex_c * A_inv;
+
+    // Construct reference path matrix
+    Eigen::VectorXd q_x = Eigen::VectorXd::Zero(numSplines * 4);
+    Eigen::VectorXd q_y = Eigen::VectorXd::Zero(numSplines * 4);
+    for (int i = 0; i < numSplines; ++i) {
+        int j = i * 4;
+        q_x.segment(j, 2) << path[i].x(), path[i + 1].x();
+        q_y.segment(j, 2) << path[i].y(), path[i + 1].y();
+    }
+    q_x(numSplines * 4 - 2) = std::cos(start_angle);
+    q_y(numSplines * 4 - 2) = std::sin(start_angle);
+    q_x(numSplines * 4 - 1) = std::cos(end_angle);
+    q_y(numSplines * 4 - 1) = std::sin(end_angle);
+
+    // Calculate derivatives
+    Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
+    Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
+
+    Eigen::VectorXd x_dot_sq = x_dot.array().square();
+    Eigen::VectorXd y_dot_sq = y_dot.array().square();
+
+    // Calculate curvature denominator
+    Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
+    Eigen::VectorXd curvatures_den = (1.0 / curv_den.array()).matrix();
+
+    Eigen::VectorXd Q_x = curvatures_den.asDiagonal() * y_dot;
+    Eigen::VectorXd Q_y = curvatures_den.asDiagonal() * x_dot;
+
+    Eigen::VectorXd curvature = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
+
+    return curvature;
+}
+
+double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::VectorXd& velocity_profile) {
+    std::vector<Eigen::Vector2d> deltas;
+    for (size_t i = 1; i < path.size(); ++i) {
+        deltas.push_back(path[i] - path[i-1]);
+    }
+
+    std::vector<double> distances(deltas.size());
+    for (size_t i = 0; i < deltas.size(); ++i) {
+        distances[i] = deltas[i].norm();
+    }
+
+    double travel_length = std::accumulate(distances.begin(), distances.end(), 0.0);
+    double avg_vel = velocity_profile.mean();
+    double travel_time = travel_length / avg_vel;
+
+    return travel_time;
+}
 
 } // namespace my_global_planner
 

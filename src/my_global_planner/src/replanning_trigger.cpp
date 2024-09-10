@@ -96,6 +96,9 @@ private:
     nav_msgs::Path final_plan_world_;
     tf::TransformListener tf_listener_;
 
+// ========================================
+// Callback Functions
+// ========================================
     void velocityCallback(const nav_msgs::Odometry::ConstPtr& msg) {
         double linear_velocity_x = msg->twist.twist.linear.x;
         double linear_velocity_y = msg->twist.twist.linear.y;
@@ -158,6 +161,9 @@ private:
         ROS_INFO("Received final plan.");
     }
 
+// ========================================
+// Update Indices
+// ========================================
     void updateCurrentIndex() {
         if (final_plan_world_.poses.empty()) {
             ROS_WARN("Final plan is empty, cannot find the nearest point.");
@@ -193,51 +199,6 @@ private:
         ahead_idx_ = current_idx_ + 2 * std::max(static_cast<int>(linear_velocity_ * time), min_gap);
 
         publishStartAndAheadPoints();
-    }
-
-    void publishStartAndAheadPoints() {
-        if (start_idx_ >= 0 && start_idx_ < final_plan_world_.poses.size()) {
-            geometry_msgs::PointStamped start_point;
-            start_point.header.frame_id = "map";
-            start_point.header.stamp = ros::Time::now();
-            start_point.point = final_plan_world_.poses[start_idx_].pose.position;
-
-            start_point_pub_.publish(start_point);
-        } else {
-            ROS_WARN("Start index out of bounds, cannot publish start point.");
-        }
-
-        if (ahead_idx_ >= 0 && ahead_idx_ < final_plan_world_.poses.size()) {
-            geometry_msgs::PointStamped ahead_point;
-            ahead_point.header.frame_id = "map";
-            ahead_point.header.stamp = ros::Time::now();
-            ahead_point.point = final_plan_world_.poses[ahead_idx_].pose.position;
-
-            ahead_point_pub_.publish(ahead_point);
-        } else {
-            ROS_WARN("Ahead index out of bounds, cannot publish ahead point.");
-        }
-    }
-
-    void publishReplanningIndices() {
-        std_msgs::Int32MultiArray indices_msg;
-
-
-        indices_msg.data.push_back(current_idx_);
-        indices_msg.data.push_back(start_idx_);
-        indices_msg.data.push_back(ahead_idx_);
-
-        // TODO: convert to final_plan
-        int replanning_idx = -1;
-        if (!pin_point_indices_.empty()) {
-            replanning_idx = pin_point_indices_[replanning_bound_idx_-1];
-        }
-        indices_msg.data.push_back(replanning_idx);
-
-        ROS_INFO("\ncurrent_idx_: %d, start_idx_: %d, ahead_idx_: %d, replanning_idx: %d", 
-                current_idx_, start_idx_, ahead_idx_, replanning_idx);
-        // ROS_INFO("REPLAN IDX: %d", replanning_bound_idx_);
-        replanning_indices_pub_.publish(indices_msg);
     }
 
     void updateReplanningIndex() {
@@ -294,6 +255,9 @@ private:
         // ROS_INFO("Published %zu markers (including deleted ones)", marker_array.markers.size());
     }
 
+// ========================================
+// Check Replanning
+// ========================================
     void checkForReplanning() {
         if (!global_costmap_ || !local_costmap_) {
             ROS_WARN("Costmaps not received yet.");
@@ -424,6 +388,27 @@ private:
         return true;  // No Obstacle
     }
 
+// ========================================
+// Convert
+// ========================================
+    void worldToMap(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double wx, double wy, double& mx, double& my) {
+        double origin_x = costmap->info.origin.position.x;
+        double origin_y = costmap->info.origin.position.y;
+        double resolution = costmap->info.resolution;
+
+        mx = static_cast<int>((wx - origin_x) / resolution);
+        my = static_cast<int>((wy - origin_y) / resolution);
+    }
+
+    void mapToWorld(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double mx, double my, double& wx, double& wy) {
+        double origin_x = costmap->info.origin.position.x;
+        double origin_y = costmap->info.origin.position.y;
+        double resolution = costmap->info.resolution;
+
+        wx = mx * resolution + origin_x;
+        wy = my * resolution + origin_y;
+    }
+
     void publishLineMarker(const geometry_msgs::Point& start, const geometry_msgs::Point& end) {
         geometry_msgs::Quaternion identity_quat;
         identity_quat.w = 1.0;
@@ -444,7 +429,54 @@ private:
         line_pub_.publish(line_marker);
     }
 
+// ========================================
+// Publish Functions
+// ========================================
+    void publishStartAndAheadPoints() {
+        if (start_idx_ >= 0 && start_idx_ < final_plan_world_.poses.size()) {
+            geometry_msgs::PointStamped start_point;
+            start_point.header.frame_id = "map";
+            start_point.header.stamp = ros::Time::now();
+            start_point.point = final_plan_world_.poses[start_idx_].pose.position;
 
+            start_point_pub_.publish(start_point);
+        } else {
+            ROS_WARN("Start index out of bounds, cannot publish start point.");
+        }
+
+        if (ahead_idx_ >= 0 && ahead_idx_ < final_plan_world_.poses.size()) {
+            geometry_msgs::PointStamped ahead_point;
+            ahead_point.header.frame_id = "map";
+            ahead_point.header.stamp = ros::Time::now();
+            ahead_point.point = final_plan_world_.poses[ahead_idx_].pose.position;
+
+            ahead_point_pub_.publish(ahead_point);
+        } else {
+            ROS_WARN("Ahead index out of bounds, cannot publish ahead point.");
+        }
+    }
+
+    void publishReplanningIndices() {
+        std_msgs::Int32MultiArray indices_msg;
+
+
+        indices_msg.data.push_back(current_idx_);
+        indices_msg.data.push_back(start_idx_);
+        indices_msg.data.push_back(ahead_idx_);
+
+        // TODO: convert to final_plan
+        int replanning_idx = -1;
+        if (!pin_point_indices_.empty()) {
+            replanning_idx = pin_point_indices_[replanning_bound_idx_-1];
+        }
+        indices_msg.data.push_back(replanning_idx);
+
+        ROS_INFO("\ncurrent_idx_: %d, start_idx_: %d, ahead_idx_: %d, replanning_idx: %d", 
+                current_idx_, start_idx_, ahead_idx_, replanning_idx);
+        // ROS_INFO("REPLAN IDX: %d", replanning_bound_idx_);
+        replanning_indices_pub_.publish(indices_msg);
+    }
+    
     void publishAllPinPoints() {
         for (size_t i = 0; i < pin_points_world_.poses.size(); ++i) {
             geometry_msgs::Point position = pin_points_world_.poses[i].position;
@@ -459,24 +491,6 @@ private:
 
             pin_points_pub_.publish(points_marker);
         }
-    }
-
-    void worldToMap(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double wx, double wy, double& mx, double& my) {
-        double origin_x = costmap->info.origin.position.x;
-        double origin_y = costmap->info.origin.position.y;
-        double resolution = costmap->info.resolution;
-
-        mx = static_cast<int>((wx - origin_x) / resolution);
-        my = static_cast<int>((wy - origin_y) / resolution);
-    }
-
-    void mapToWorld(const nav_msgs::OccupancyGrid::ConstPtr& costmap, double mx, double my, double& wx, double& wy) {
-        double origin_x = costmap->info.origin.position.x;
-        double origin_y = costmap->info.origin.position.y;
-        double resolution = costmap->info.resolution;
-
-        wx = mx * resolution + origin_x;
-        wy = my * resolution + origin_y;
     }
 
     visualization_msgs::Marker createMarker(
@@ -554,6 +568,9 @@ private:
 
 };
 
+// ========================================
+// Main
+// ========================================
 int main(int argc, char** argv) {
     ros::init(argc, argv, "replanning_trigger_node");
     ReplanningTriggerNode node;

@@ -8,6 +8,9 @@
 
 namespace my_global_planner {
 
+// ========================================
+// Update Path Information
+// ========================================
 void updateOrientation(std::vector<geometry_msgs::PoseStamped>& plan) {
     if (plan.size() < 2) {
         ROS_WARN("Fail updating orientation: at least two points are required.");
@@ -36,145 +39,9 @@ void updateOrientation(std::vector<geometry_msgs::PoseStamped>& plan) {
     }
 }
 
-bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStamped& end_pose) {
-    //  Bresenham's line algorithm
-    int start_x = start_pose.pose.position.x;
-    int start_y = start_pose.pose.position.y;
-    int dx = end_pose.pose.position.x - start_x;
-    int dy = end_pose.pose.position.y - start_y;
-    int abs_dx = abs(dx);
-    int abs_dy = abs(dy);
-    int x_inc = (dx > 0) ? 1 : -1;
-    int y_inc = (dy > 0) ? 1 : -1;
-    int n = 1 + abs_dx + abs_dy;
-    int x_error = abs_dx - abs_dy;
-
-    abs_dx *= 2;
-    abs_dy *= 2;
-
-    for (; n > 0; --n) {
-        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION_INIT)
-            return false;
-
-        if (x_error > 0) {
-            start_x += x_inc;
-            x_error -= abs_dy;
-        } else {
-            start_y += y_inc;
-            x_error += abs_dx;
-        }
-    }
-    return true;
-}
-
-bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
-    // Bresenham's line algorithm
-    int dx = end_x - start_x;
-    int dy = end_y - start_y;
-    int abs_dx = abs(dx);
-    int abs_dy = abs(dy);
-    int x_inc = (dx > 0) ? 1 : -1;
-    int y_inc = (dy > 0) ? 1 : -1;
-    int n = 1 + abs_dx + abs_dy;
-    int x_error = abs_dx - abs_dy;
-
-    abs_dx *= 2;
-    abs_dy *= 2;
-
-    for (; n > 0; --n) {
-        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION)
-            return false;
-
-        if (x_error > 0) {
-            start_x += x_inc;
-            x_error -= abs_dy;
-        } else {
-            start_y += y_inc;
-            x_error += abs_dx;
-        }
-    }
-    return true;
-}
-
-double calculateDistance(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2) {
-    return (pt2 - pt1).norm();
-}
-
-Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
-    double ax = pt1.x(), ay = pt1.y();
-    double bx = pt2.x(), by = pt2.y();
-    double cx = pt3.x(), cy = pt3.y();
-
-    double d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-    if (d == 0) {
-        return Eigen::Vector2d(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity());
-    } else {
-        double ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
-        double uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
-        return Eigen::Vector2d(ux, uy);
-    }
-}
-
-Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
-    int n = path.size();
-    Eigen::VectorXd curvature(n);
-
-    for (int i = 1; i < n - 1; ++i) {
-        Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);
-
-        if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
-            curvature(i) = 0.0;
-        } else {
-            double R = calculateDistance(path[i], center_point);
-            if (R != 0.0) {
-                curvature(i) = 1.0 / R;
-            } else {
-                curvature(i) = 0.0;
-            }
-        }
-    }
-
-    curvature(0) = 0.0;
-    curvature(n - 1) = 0.0;
-
-    return curvature;
-}
-
-Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg) {
-    int n = path_msg.poses.size();
-    Eigen::VectorXd curvature(n);
-
-    std::vector<Eigen::Vector2d> path;
-    for (const auto& pose : path_msg.poses) {
-        double x = pose.pose.position.x;
-        double y = pose.pose.position.y;
-        path.emplace_back(x, y);
-    }
-
-    for (int i = 1; i < n - 1; ++i) {
-        Eigen::Vector2d d1 = path[i] - path[i - 1];
-        Eigen::Vector2d d2 = path[i + 1] - path[i];
-
-        Eigen::Vector2d velocity = (d1 + d2) / 2.0;
-
-        Eigen::Vector2d acceleration = d2 - d1;
-
-        double numerator = std::abs(velocity.x() * acceleration.y() - velocity.y() * acceleration.x());
-        double denominator = std::pow(velocity.squaredNorm(), 1.5);
-
-        if (denominator != 0.0) {
-            curvature(i) = numerator / denominator;
-        } else {
-            curvature(i) = 0.0;
-        }
-    }
-
-    curvature(0) = 0.0;
-    curvature(n - 1) = 0.0;
-
-    return curvature;
-}
-
+// ========================================
+// Post Smoothing
+// ========================================
 std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::PoseStamped>& plan) {
     int i = 0;
     std::vector<geometry_msgs::PoseStamped> new_plan;
@@ -194,6 +61,9 @@ std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::P
     return new_plan;
 }
 
+// ========================================
+// Path Spacing
+// ========================================
 std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometry_msgs::PoseStamped>& plan) {
     if (plan.empty()) {
         ROS_WARN("Uniform spacing failed: Path is empty.");
@@ -315,6 +185,69 @@ std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>&
     return new_path;
 }
 
+// ========================================
+// Obstacles Related Functions
+// ========================================
+bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStamped& end_pose) {
+    //  Bresenham's line algorithm
+    int start_x = start_pose.pose.position.x;
+    int start_y = start_pose.pose.position.y;
+    int dx = end_pose.pose.position.x - start_x;
+    int dy = end_pose.pose.position.y - start_y;
+    int abs_dx = abs(dx);
+    int abs_dy = abs(dy);
+    int x_inc = (dx > 0) ? 1 : -1;
+    int y_inc = (dy > 0) ? 1 : -1;
+    int n = 1 + abs_dx + abs_dy;
+    int x_error = abs_dx - abs_dy;
+
+    abs_dx *= 2;
+    abs_dy *= 2;
+
+    for (; n > 0; --n) {
+        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION_INIT)
+            return false;
+
+        if (x_error > 0) {
+            start_x += x_inc;
+            x_error -= abs_dy;
+        } else {
+            start_y += y_inc;
+            x_error += abs_dx;
+        }
+    }
+    return true;
+}
+
+bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
+    // Bresenham's line algorithm
+    int dx = end_x - start_x;
+    int dy = end_y - start_y;
+    int abs_dx = abs(dx);
+    int abs_dy = abs(dy);
+    int x_inc = (dx > 0) ? 1 : -1;
+    int y_inc = (dy > 0) ? 1 : -1;
+    int n = 1 + abs_dx + abs_dy;
+    int x_error = abs_dx - abs_dy;
+
+    abs_dx *= 2;
+    abs_dy *= 2;
+
+    for (; n > 0; --n) {
+        if (costmap->getCost(start_x, start_y) >= Constant::OBSTACLE_INFLATION)
+            return false;
+
+        if (x_error > 0) {
+            start_x += x_inc;
+            x_error -= abs_dy;
+        } else {
+            start_y += y_inc;
+            x_error += abs_dx;
+        }
+    }
+    return true;
+}
+
 double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_radius) {
     unsigned int start_x = static_cast<unsigned int>(start.x());
     unsigned int start_y = static_cast<unsigned int>(start.y());
@@ -353,6 +286,9 @@ double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_r
     }
 }
 
+// ========================================
+// Velocity Profile
+// ========================================
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
 
     size_t len_path = curvature.size();
@@ -407,6 +343,88 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     }
 
     return std::make_pair(velocity_profile, velocity_constraints);
+}
+
+// ========================================
+// Curvatures
+// ========================================
+double calculateDistance(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2) {
+    return (pt2 - pt1).norm();
+}
+
+Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, const Eigen::Vector2d& pt3) {
+    double ax = pt1.x(), ay = pt1.y();
+    double bx = pt2.x(), by = pt2.y();
+    double cx = pt3.x(), cy = pt3.y();
+
+    double d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    if (d == 0) {
+        return Eigen::Vector2d(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity());
+    } else {
+        double ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+        double uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+        return Eigen::Vector2d(ux, uy);
+    }
+}
+
+Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
+    int n = path.size();
+    Eigen::VectorXd curvature(n);
+
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);
+
+        if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
+            curvature(i) = 0.0;
+        } else {
+            double R = calculateDistance(path[i], center_point);
+            if (R != 0.0) {
+                curvature(i) = 1.0 / R;
+            } else {
+                curvature(i) = 0.0;
+            }
+        }
+    }
+
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
+
+    return curvature;
+}
+
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg) {
+    int n = path_msg.poses.size();
+    Eigen::VectorXd curvature(n);
+
+    std::vector<Eigen::Vector2d> path;
+    for (const auto& pose : path_msg.poses) {
+        double x = pose.pose.position.x;
+        double y = pose.pose.position.y;
+        path.emplace_back(x, y);
+    }
+
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d d1 = path[i] - path[i - 1];
+        Eigen::Vector2d d2 = path[i + 1] - path[i];
+
+        Eigen::Vector2d velocity = (d1 + d2) / 2.0;
+
+        Eigen::Vector2d acceleration = d2 - d1;
+
+        double numerator = std::abs(velocity.x() * acceleration.y() - velocity.y() * acceleration.x());
+        double denominator = std::pow(velocity.squaredNorm(), 1.5);
+
+        if (denominator != 0.0) {
+            curvature(i) = numerator / denominator;
+        } else {
+            curvature(i) = 0.0;
+        }
+    }
+
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
+
+    return curvature;
 }
 
 } // namespace my_global_planner

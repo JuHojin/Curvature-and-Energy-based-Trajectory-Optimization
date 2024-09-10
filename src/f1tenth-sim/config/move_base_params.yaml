@@ -30,3 +30,8 @@ oscillation_distance: 0.5        # Distance in meters to reset oscillation timer
 
 # Costmap Management
 shutdown_costmaps: false    # Shutdown costmaps when move_base is inactive
+
+# Local Planner
+DWAPlannerROS:
+  obstacle_range: 0
+

@@ -18,7 +18,7 @@ namespace Constant {
 
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 20 / 3.6;
-    constexpr double MAX_AX = 0.1;
+    constexpr double MAX_AX = 0.05;
     constexpr double MAX_AY = 1;
     constexpr double INIT_VELOCITY = 0;
 
@@ -27,8 +27,8 @@ namespace Constant {
     constexpr int PINPOINT_SELECT_METHOD = 3;
 
     // Map: Obstacle
-    constexpr unsigned char OBSTACLE_INFLATION_INIT = 100;
-    constexpr unsigned char OBSTACLE_INFLATION = 100;
+    constexpr unsigned char OBSTACLE_INFLATION_INIT = 120;
+    constexpr unsigned char OBSTACLE_INFLATION = 120;
 }
 
 #endif // CONSTANT_H
