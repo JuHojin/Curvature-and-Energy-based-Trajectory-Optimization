@@ -110,8 +110,8 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
             // 3. Global costmap (world) -> Global costmap (map)
             for (auto& point : left) {
-                unsigned int mx, my;
-                if (costmap->worldToMap(point.x(), point.y(), mx, my)) {
+                double mx, my;
+                if (convertWorldToMap(point.x(), point.y(), mx, my)) {
                     point.x() = mx;
                     point.y() = my;
                 } else {
@@ -120,8 +120,8 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             }
 
             for (auto& point : right) {
-                unsigned int mx, my;
-                if (costmap->worldToMap(point.x(), point.y(), mx, my)) {
+                double mx, my;
+                if (convertWorldToMap(point.x(), point.y(), mx, my)) {
                     point.x() = mx;
                     point.y() = my;
                 } else {

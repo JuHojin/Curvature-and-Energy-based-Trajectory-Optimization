@@ -44,6 +44,10 @@ std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geom
 nav_msgs::Path producePathMapToWorld (std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<Eigen::Vector2d> convertPoseStampedToVector2d(const std::vector<geometry_msgs::PoseStamped>& plan);
 std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::vector<Eigen::Vector2d>& plan);
+bool convertMapToWorld(const unsigned int& mx, const unsigned int& my, double& wx, double& wy);
+bool convertMapToWorld(const double& mx, const double& my, double& wx, double& wy);
+bool convertWorldToMap(const double& wx, const double& wy, unsigned int &mx, unsigned int &my);
+bool convertWorldToMap(const double& wx, const double& wy, double &mx, double &my);
 
 geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer);
 Eigen::Vector2d globalToLocal(const Eigen::Vector2d& global_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer);
