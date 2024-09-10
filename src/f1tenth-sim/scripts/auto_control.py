@@ -182,7 +182,7 @@ def main():
             wpts_y = auto_control.y_list
 
             # rospy.loginfo("Loaded waypoints: %d" % len(wpts_x))
-            rospy.loginfo("velocity profile: {}".format(auto_control.velocity_profile))
+            # rospy.loginfo("velocity profile: {}".format(auto_control.velocity_profile))
 
             # update look ahead based on current velocity
             auto_control.wpt_look_ahead = int(0.5 * ego_vx)
