@@ -122,8 +122,8 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Convert start and goal point: (Real) World -> Map
         unsigned int start_x, start_y, goal_x, goal_y;
-        bool valid_start = costmap->worldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y);
-        bool valid_goal = costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y);
+        bool valid_start = convertWorldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y);
+        bool valid_goal = convertWorldToMap(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y);
         
         // Check if start and goal is out of bound
         if (!valid_start || !valid_goal) {
@@ -263,12 +263,12 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // 2.4. Optimizatoin
         for (const auto& pose : path_replan) {
-            unsigned int mx = pose.x();
-            unsigned int my = pose.y();
+            double mx = pose.x();
+            double my = pose.y();
 
             // 1. map to world using costmap
             double wx, wy;
-            costmap->mapToWorld(mx, my, wx, wy);
+            convertMapToWorld(mx, my, wx, wy);
             Eigen::Vector2d global_point(wx, wy);
             ROS_INFO("Global Point in World Frame: (%.2f, %.2f)", wx, wy);
 
@@ -303,9 +303,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
 
             // 3. world to map using costmap
-            unsigned int mx, my;
-            if (costmap->worldToMap(global_pose.pose.position.x, global_pose.pose.position.y, mx, my)) {
-                ROS_INFO("Step 3: Map Coordinates (mx, my): (%d, %d)", mx, my);
+            double mx, my;
+            if (convertWorldToMap(global_pose.pose.position.x, global_pose.pose.position.y, mx, my)) {
+                ROS_INFO("Step 3: Map Coordinates (mx, my): (%.2f, %.2f)", mx, my);
 
                 global_pose.pose.position.x = mx;
                 global_pose.pose.position.y = my;
@@ -563,9 +563,6 @@ nav_msgs::Path producePathMapToWorld(std::vector<geometry_msgs::PoseStamped>& pl
 
         new_pose.pose.position.x = plan[i].pose.position.x * resolution + origin_x;
         new_pose.pose.position.y = plan[i].pose.position.y * resolution + origin_y;
-        // costmap->mapToWorld(plan[i].pose.position.x, plan[i].pose.position.y, world_x, world_y);
-        // new_pose.pose.position.x = world_x;
-        // new_pose.pose.position.y = world_y;
         new_pose.pose.position.z = 0;
         new_pose.pose.orientation = plan[i].pose.orientation;
 
@@ -602,6 +599,86 @@ std::vector<geometry_msgs::PoseStamped> convertVector2dToPoseStamped(const std::
     updateOrientation(plan);
 
     return plan;
+}
+
+bool convertMapToWorld(const unsigned int& mx, const unsigned int& my, double& wx, double& wy) {
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+    
+    unsigned int map_width = costmap->getSizeInCellsX();
+    unsigned int map_height = costmap->getSizeInCellsY();
+
+    if (mx >= map_width || my >= map_height) {
+        return false;
+    }
+
+    wx = mx * resolution + origin_x;
+    wy = my * resolution + origin_y;
+
+    return true;
+}
+
+bool convertMapToWorld(const double& mx, const double& my, double& wx, double& wy) {
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+    
+    unsigned int map_width = costmap->getSizeInCellsX();
+    unsigned int map_height = costmap->getSizeInCellsY();
+
+    if (mx >= map_width || my >= map_height) {
+        return false;
+    }
+
+    wx = mx * resolution + origin_x;
+    wy = my * resolution + origin_y;
+
+    return true;
+}
+
+bool convertWorldToMap(const double& wx, const double& wy, unsigned int &mx, unsigned int &my) {
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+    
+    unsigned int map_width = costmap->getSizeInCellsX();
+    unsigned int map_height = costmap->getSizeInCellsY();
+
+    if (wx < origin_x || wy < origin_y) {
+        return false;
+    }
+
+    mx = static_cast<int>((wx - origin_x) / resolution);
+    my = static_cast<int>((wy - origin_y) / resolution);
+
+    if (mx < map_width && my < map_height) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool convertWorldToMap(const double& wx, const double& wy, double &mx, double &my) {
+    double origin_x = costmap->getOriginX();
+    double origin_y = costmap->getOriginY();
+    double resolution = costmap->getResolution();
+    
+    unsigned int map_width = costmap->getSizeInCellsX();
+    unsigned int map_height = costmap->getSizeInCellsY();
+
+    if (wx < origin_x || wy < origin_y) {
+        return false;
+    }
+
+    mx = (wx - origin_x) / resolution;
+    my = (wy - origin_y) / resolution;
+
+    if (mx < map_width && my < map_height) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, const nav_msgs::OccupancyGrid& local_costmap_msg, const std::string& target_frame, tf2_ros::Buffer& tf_buffer_) {
