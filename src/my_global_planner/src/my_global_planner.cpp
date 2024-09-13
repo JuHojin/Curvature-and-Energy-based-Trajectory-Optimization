@@ -34,6 +34,7 @@ MyGlobalPlanner::MyGlobalPlanner(std::string name, costmap_2d::Costmap2DROS* cos
     : tf_buffer_(), tf_listener_(tf_buffer_, true) {
     initialize(name, costmap_ros);
 }
+
 MyGlobalPlanner::~MyGlobalPlanner() {}
 
 void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros) {
@@ -253,40 +254,83 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         int start_idx = received_pin_point_indices_[1];
         int ahead_idx = received_pin_point_indices_[2];
         int pin_point_idx = received_pin_point_indices_[3];
+        int end_point_idx = std::min(pin_point_idx + (ahead_idx - start_idx), static_cast<int>(latest_plan_global.size() - 1));
 
         std::vector<geometry_msgs::PoseStamped> plan_initial_global_map;
         std::vector<geometry_msgs::PoseStamped> plan_replan1_global_map;
         std::vector<geometry_msgs::PoseStamped> plan_replan2_global_map;
+        std::vector<geometry_msgs::PoseStamped> plan_replan3_global_map;
         std::vector<Eigen::Vector2d> path_replan_global_map;
         std::vector<Eigen::Vector2d> path_replan1_global_map;
         std::vector<Eigen::Vector2d> path_replan2_global_map;
+        std::vector<Eigen::Vector2d> path_replan3_global_map;
         std::vector<Eigen::Vector2d> path_replan_local_map;
         std::vector<Eigen::Vector2d> path_opt_replan_local_map;
         std::vector<geometry_msgs::PoseStamped> plan_opt_replan;
         std::vector<geometry_msgs::PoseStamped> plan_final;
         
-        ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx);
+        ROS_INFO("size: %lu", latest_plan_global.size());
+        ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d, end_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx, end_point_idx);
+        if (current_idx < latest_plan_global.size()) {
+            ROS_INFO("current_idx Position: x = %.2f, y = %.2f", 
+                latest_plan_global[current_idx].pose.position.x, 
+                latest_plan_global[current_idx].pose.position.y);
+        }
+
+        if (start_idx < latest_plan_global.size()) {
+            ROS_INFO("start_idx Position: x = %.2f, y = %.2f", 
+                latest_plan_global[start_idx].pose.position.x, 
+                latest_plan_global[start_idx].pose.position.y);
+        }
+
+        if (ahead_idx < latest_plan_global.size()) {
+            ROS_INFO("ahead_idx Position: x = %.2f, y = %.2f", 
+                latest_plan_global[ahead_idx].pose.position.x, 
+                latest_plan_global[ahead_idx].pose.position.y);
+        }
+
+        if (pin_point_idx < latest_plan_global.size()) {
+            ROS_INFO("pin_point_idx Position: x = %.2f, y = %.2f", 
+                latest_plan_global[pin_point_idx].pose.position.x, 
+                latest_plan_global[pin_point_idx].pose.position.y);
+        }
 
         // 1. latest_plan_global[0] ~ latest_plan_global[start_idx - 1]
-        plan_initial_global_map.insert(plan_initial_global_map.end(), latest_plan_global.begin(), latest_plan_global.begin() + start_idx) + 1;
-        
+        if (start_idx <= latest_plan_global.size()) {
+            plan_initial_global_map.insert(plan_initial_global_map.end(), latest_plan_global.begin(), latest_plan_global.begin() + start_idx);
+        }
+
         // 2.1. latest_plan_global[start_idx] ~ latest_plan_global[ahead_idx - 1]
-        plan_replan1_global_map.insert(plan_replan1_global_map.end(), latest_plan_global.begin() + start_idx, latest_plan_global.begin() + ahead_idx);
-        path_replan1_global_map = convertPoseStampedToVector2d(plan_replan1_global_map);
-        
+        if (ahead_idx <= latest_plan_global.size()) {
+            plan_replan1_global_map.insert(plan_replan1_global_map.end(), latest_plan_global.begin() + start_idx, latest_plan_global.begin() + ahead_idx);
+            path_replan1_global_map = convertPoseStampedToVector2d(plan_replan1_global_map);
+        }
+
         // 2.2. Uniformly spaced points between latest_plan_global[ahead_idx] and latest_plan_global[pin_point_idx]
-        plan_replan2_global_map.push_back(latest_plan_global[ahead_idx]);
-        plan_replan2_global_map.push_back(latest_plan_global[pin_point_idx]);
-        path_replan2_global_map = convertPoseStampedToVector2d(plan_replan2_global_map);
-        path_replan2_global_map = uniformSpacing(path_replan2_global_map);
-        
-        // 2.3. combine path_replan1_global_map and path_replan2_global_map to path_replan_global_map
-        path_replan_global_map.reserve(path_replan1_global_map.size() + path_replan2_global_map.size());
+        if (ahead_idx < latest_plan_global.size() && pin_point_idx < latest_plan_global.size()) {
+            plan_replan2_global_map.push_back(latest_plan_global[ahead_idx]);
+            plan_replan2_global_map.push_back(latest_plan_global[pin_point_idx]);
+            path_replan2_global_map = convertPoseStampedToVector2d(plan_replan2_global_map);
+        }
+        // path_replan2_global_map = uniformSpacing(path_replan2_global_map);
+
+        // 2.3 latest_plan_global[pin_point_idx + 1] ~ latest_plan_global[end_point_idx]
+        if (pin_point_idx < end_point_idx && end_point_idx < latest_plan_global.size()) {
+            ROS_INFO("%d < %d", pin_point_idx, end_point_idx);
+            plan_replan3_global_map.insert(plan_replan3_global_map.end(), latest_plan_global.begin() + pin_point_idx + 1, latest_plan_global.begin() + end_point_idx);
+            path_replan3_global_map = convertPoseStampedToVector2d(plan_replan3_global_map);
+        }
+
+        // 2.4. combine path_replan1_global_map and path_replan2_global_map to path_replan_global_map
+        path_replan_global_map.reserve(path_replan1_global_map.size() + path_replan2_global_map.size() + path_replan3_global_map.size());
         path_replan_global_map.insert(path_replan_global_map.end(), path_replan1_global_map.begin(), path_replan1_global_map.end());
         path_replan_global_map.insert(path_replan_global_map.end(), path_replan2_global_map.begin(), path_replan2_global_map.end());
+        if (pin_point_idx < end_point_idx) {
+            path_replan_global_map.insert(path_replan_global_map.end(), path_replan3_global_map.begin(), path_replan3_global_map.end());
+        }
         path_replan_global_map = uniformSpacing(path_replan_global_map);
         
-        // 2.4. Optimizatoin
+        // 2.5. Optimizatoin
         float resolution = local_costmap_msg->info.resolution;
         double local_costmap_x = local_costmap_msg->info.origin.position.x;
         double local_costmap_y = local_costmap_msg->info.origin.position.y;
@@ -348,8 +392,8 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         }
 
         // 3. latest_plan_global[pin_point_idx + 1] ~ latest_plan_global[latest_plan_global.back()]
-        if (pin_point_idx < latest_plan_global.size() - 1) {
-            plan_final.insert(plan_final.end(), latest_plan_global.begin() + pin_point_idx + 1, latest_plan_global.end());
+        if (end_point_idx < latest_plan_global.size() - 1) {
+            plan_final.insert(plan_final.end(), latest_plan_global.begin() + end_point_idx + 1, latest_plan_global.end());
         } else {
             ROS_WARN("pin_point_idx + 1 is out of bounds. Skipping final latest_plan_global insertion.");
             ROS_INFO("pin_point_idx: %d, latest_plan_global size: %lu", pin_point_idx, latest_plan_global.size());
@@ -361,7 +405,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         latest_plan_global.insert(latest_plan_global.end(), plan_opt_replan.begin(), plan_opt_replan.end());
         latest_plan_global.insert(latest_plan_global.end(), plan_final.begin(), plan_final.end());
         updateOrientation(latest_plan_global);
-
 
         replanned_path_world = producePathMapToWorld(latest_plan_global);
         // for (size_t i = 0; i < latest_plan_global.size(); ++i) {

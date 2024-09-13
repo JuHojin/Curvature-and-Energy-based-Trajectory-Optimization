@@ -29,6 +29,7 @@ namespace Constant {
     // Map: Obstacle
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 120;
     constexpr unsigned char OBSTACLE_INFLATION = 120;
+    constexpr unsigned char LOCAL_OBSTACLE_INFLATION = 10;
 }
 
 #endif // CONSTANT_H

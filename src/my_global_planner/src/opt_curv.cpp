@@ -383,7 +383,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
         const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;
 
         if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
-            ROS_WARN("Point (%f, %f) is out of local costmap bounds (%d, %d).", map_x, map_y, costmap_msg->info.width, costmap_msg->info.height);
+            // ROS_WARN("Point (%f, %f) is out of local costmap bounds (%d, %d).", map_x, map_y, costmap_msg->info.width, costmap_msg->info.height);
             return Constant::DEV_MAX;
         }
 
@@ -403,9 +403,10 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
             // ROS_INFO("Checking index %d: costmap value = %d", index, costmap_msg->data[index]);
 
             unsigned char cost = costmap_msg->data[index];
-            if (cost >= Constant::OBSTACLE_INFLATION || cost == costmap_2d::NO_INFORMATION) {
+            // std::cout << static_cast<int>(cost) << " ";
+            if (cost >= Constant::LOCAL_OBSTACLE_INFLATION || cost == costmap_2d::NO_INFORMATION) {
                 is_valid_point = false;
-                // ROS_INFO("Point is inside an obstacle or inflation zone.");
+                ROS_INFO("Point is inside an obstacle or inflation zone.");
             }
 
             if (is_valid_point) {
@@ -418,11 +419,13 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
             }
         }
 
-        if (found_valid_point) {
-            ROS_INFO("Last valid point found at distance %d", last_valid_d);
-        } else {
-            ROS_WARN("No valid point found within %d iterations.", Constant::DEV_MAX);
-        }
+        // std::cout << '\n' << std::endl;
+
+        // if (found_valid_point) {
+        //     ROS_INFO("Last valid point found at distance %d", last_valid_d);
+        // } else {
+        //     ROS_WARN("No valid point found within %d iterations.", Constant::DEV_MAX);
+        // }
     }
     // Normal planning
     else {

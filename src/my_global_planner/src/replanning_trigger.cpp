@@ -269,6 +269,43 @@ private:
 
         return replanning_bound_idx;
     }
+    
+    void updateReplanningIndex() {
+        pin_point_indices_.clear();
+
+        for (size_t i = 0; i < pin_points_world_.poses.size(); ++i) {
+            const auto& pin_point = pin_points_world_.poses[i].position;
+
+            int closest_idx = -1;
+            double min_distance = std::numeric_limits<double>::max();
+
+            for (size_t j = 0; j < current_plan_world_.poses.size(); ++j) {
+                const auto& plan_point = current_plan_world_.poses[j].pose.position;
+                
+                double dx = plan_point.x - pin_point.x;
+                double dy = plan_point.y - pin_point.y;
+                double distance = std::sqrt(dx * dx + dy * dy);
+
+                if (distance < min_distance) {
+                    min_distance = distance;
+                    closest_idx = j;
+                }
+            }
+
+            if (closest_idx != -1) {
+                pin_point_indices_.push_back(closest_idx);
+            }
+        }
+
+        for (size_t i = 0; i < pin_point_indices_reversed_.size(); ++i) {
+            pin_point_indices_reversed_[pin_point_indices_reversed_.size() - i - 1] = pin_point_indices_[i];
+        }
+        
+        std::reverse(pin_point_indices_reversed_.begin(), pin_point_indices_reversed_.end());
+
+        ROS_INFO("Updated pin point indices and reversed indices based on the current plan.");
+    }
+
 
     int findClosestPointIndex(const nav_msgs::Path& plan, const geometry_msgs::Pose& target_pose) {
         int closest_idx = -1;
@@ -312,7 +349,6 @@ private:
         ROS_INFO("Replan possible: %s", replan_possible ? "true" : "false");
         ROS_INFO("Replanning bound idx %d", replanning_bound_idx);
         if (replan_possible) {
-            ++replanning_bound_idx;
             ros::NodeHandle nh;
             ros::ServiceClient client = nh.serviceClient<my_global_planner::ReplanningService>("replanning_service");
             my_global_planner::ReplanningService srv;
@@ -327,6 +363,9 @@ private:
                 if (srv.response.success) {
                     ROS_INFO("Replanning request processed successfully");
                     current_plan_world_ = srv.response.replanned_path;
+                    ++replanning_bound_idx;
+                    updateReplanningIndex();
+
                 } else {
                     ROS_WARN("Replanning request was not successful");
                 }
@@ -418,7 +457,7 @@ private:
                     publishMarker(pin_points_world_.poses[i].position, "fixed_pin_points", i, 0.2, {1.0, 0.0, 0.0, 1.0}, fixed_pin_points_pub_);
 
                     replanning_bound_idx = i;
-                    ROS_INFO("replanning bound idx ++ at PATHCLEAR");
+                    ROS_INFO("replanning bound idx: %d at PATHCLEAR", replanning_bound_idx);
                     if (replanning_bound_idx >= pin_points_world_.poses.size()) {
                         replanning_bound_idx = pin_points_world_.poses.size();
                     }
