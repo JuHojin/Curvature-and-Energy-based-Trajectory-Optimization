@@ -89,7 +89,7 @@ class AutoController():
 
         # Pub/Sub
         # self.sub_pose    = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.callback_pose)
-        self.sub_path    = rospy.Subscriber('/move_base/MyGlobalPlanner/plan/inital', Path, self.callback_path)
+        self.sub_path    = rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, self.callback_path)
         self.sub_odom    = rospy.Subscriber('/car_1/base/odom', Odometry, self.callback_odom)
         self.sub_vel_profile = rospy.Subscriber('/move_base/MyGlobalPlanner/velocity_profile', Float64MultiArray, self.callback_vel_profile)
         self.pub_command = rospy.Publisher('/{}/command'.format(str(sys.argv[1])), AckermannDrive, queue_size = 1)

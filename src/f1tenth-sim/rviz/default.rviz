@@ -301,7 +301,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.05000000074505806
       Shaft Length: 0.10000000149011612
-      Topic: /move_base/MyGlobalPlanner/plan/final
+      Topic: /move_base/MyGlobalPlanner/plan/replan
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -397,19 +397,19 @@ Visualization Manager:
       Unreliable: false
       Value: true
     - Class: rviz/Marker
-      Enabled: false
+      Enabled: true
       Marker Topic: /replanning_trigger/line_marker
       Name: Replanning Line
       Namespaces:
         {}
       Queue Size: 100
-      Value: false
+      Value: true
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /replanning_trigger/pin_points_marker
       Name: Pin Point
       Namespaces:
-        pin_points: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -461,7 +461,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/valid_pin_points
       Name: MarkerArray
       Namespaces:
-        valid_pin_points: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -528,5 +528,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1431
-  X: 2637
-  Y: 240
+  X: 821
+  Y: 174

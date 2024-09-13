@@ -55,6 +55,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_last_opt = private_nh.advertise<nav_msgs::Path>("plan/last_opt", 1);
     plan_publisher_initial = private_nh.advertise<nav_msgs::Path>("plan/initial", 1);
     plan_publisher_replan = private_nh.advertise<nav_msgs::Path>("plan/replan", 1);
+    plan_publisher_latest = private_nh.advertise<nav_msgs::Path>("plan/latest", 1);
 
     profile_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_profile", 10);
     constraints_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_constraints", 10);
@@ -210,7 +211,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
         publishPath(plan_publisher_initial, final_plan_world);
-
+        publishPath(plan_publisher_latest, final_plan_world);
         // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
         //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
         //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
@@ -377,6 +378,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
         publishPath(plan_publisher_replan, replanned_path_world);
+        publishPath(plan_publisher_latest, replanned_path_world);
 
         return true;
     }

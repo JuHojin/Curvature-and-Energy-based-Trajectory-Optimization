@@ -87,6 +87,7 @@ private:
     ros::Publisher plan_publisher_initial;
     ros::Publisher plan_publisher_replan;
     ros::Publisher plan_publisher_last_opt;
+    ros::Publisher plan_publisher_latest;
     ros::Publisher profile_publisher;
     ros::Publisher constraints_publisher;
     ros::Publisher pin_points_publisher;

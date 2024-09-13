@@ -312,6 +312,7 @@ private:
         ROS_INFO("Replan possible: %s", replan_possible ? "true" : "false");
         ROS_INFO("Replanning bound idx %d", replanning_bound_idx);
         if (replan_possible) {
+            ++replanning_bound_idx;
             ros::NodeHandle nh;
             ros::ServiceClient client = nh.serviceClient<my_global_planner::ReplanningService>("replanning_service");
             my_global_planner::ReplanningService srv;
@@ -325,7 +326,6 @@ private:
             if (client.call(srv)) {
                 if (srv.response.success) {
                     ROS_INFO("Replanning request processed successfully");
-                    ++replanning_bound_idx;
                     current_plan_world_ = srv.response.replanned_path;
                 } else {
                     ROS_WARN("Replanning request was not successful");
