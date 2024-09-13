@@ -12,6 +12,8 @@ find_package(catkin REQUIRED COMPONENTS
   nav_core
   pluginlib
   roscpp
+  std_msgs
+  message_generation
 )
 
 find_package(osqp REQUIRED)
@@ -49,18 +51,16 @@ find_package(osqp REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  PinPoints.msg
+)
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  ReplanningService.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -70,10 +70,12 @@ find_package(osqp REQUIRED)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+  nav_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -105,10 +107,10 @@ find_package(osqp REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES my_global_planner
-#  CATKIN_DEPENDS costmap_2d nav_core pluginlib roscpp
-#  DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES my_global_planner
+  CATKIN_DEPENDS costmap_2d nav_core pluginlib roscpp message_runtime
+  DEPENDS system_lib
 )
 
 ###########
@@ -159,6 +161,9 @@ target_link_libraries(${PROJECT_NAME}
 target_link_libraries(replanning_trigger
   ${catkin_LIBRARIES}
 )
+# target_link_libraries(replanning_trigger
+#   ${catkin_LIBRARIES}
+# )
 
 
 #############

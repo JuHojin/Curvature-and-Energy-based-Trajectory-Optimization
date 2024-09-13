@@ -1,0 +1,11 @@
+# ReplanningService.srv
+# Request
+bool replanning_status
+int32 current_idx
+int32 start_idx
+int32 ahead_idx
+int32 replanning_idx
+---
+# Response
+bool success
+nav_msgs/Path replanned_path
