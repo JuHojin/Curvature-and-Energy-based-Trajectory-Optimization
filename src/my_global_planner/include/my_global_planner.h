@@ -75,7 +75,7 @@ private:
     geometry_msgs::PoseStamped goal_;
     std::vector<geometry_msgs::PoseStamped> latest_plan_global;
     bool replanning_mode;
-    std::array<int, 4> received_pin_point_indices_;
+    std::array<int, 5> received_pin_point_indices_;
     nav_msgs::Path replanned_path_world;
 
     tf2_ros::Buffer tf_buffer_;

@@ -17,7 +17,7 @@ namespace Constant {
     constexpr unsigned int MAX_OPT_ITER = 10;
 
     // Velocity Profile [SI]
-    constexpr double MAX_VEL = 1;
+    constexpr double MAX_VEL = 5;
     constexpr double MAX_AX = 0.03;
     constexpr double MAX_AY = 1;
     constexpr double INIT_VELOCITY = 0;

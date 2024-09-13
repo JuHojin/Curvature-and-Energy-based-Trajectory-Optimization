@@ -89,7 +89,7 @@ bool MyGlobalPlanner::handleReplanningRequest(my_global_planner::ReplanningServi
     ROS_INFO("replanning_idx: %d", req.replanning_idx);
 
     replanning_mode = req.replanning_status;
-    received_pin_point_indices_ = {req.current_idx, req.start_idx, req.ahead_idx, req.replanning_idx};
+    received_pin_point_indices_ = {req.current_idx, req.start_idx, req.ahead_idx, req.replanning_idx, req.end_idx};
 
     if (replanning_mode) {
         ROS_INFO("Replanning Triggered via service");
@@ -247,14 +247,14 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     else {
         ROS_INFO("Replanning mode.");
         
-        if (received_pin_point_indices_.size() < 4) {
+        if (received_pin_point_indices_.size() < 5) {
             ROS_ERROR("indices list size is wrong");
         }
         int current_idx = received_pin_point_indices_[0];
         int start_idx = received_pin_point_indices_[1];
         int ahead_idx = received_pin_point_indices_[2];
         int pin_point_idx = received_pin_point_indices_[3];
-        int end_point_idx = std::min(pin_point_idx + (ahead_idx - start_idx), static_cast<int>(latest_plan_global.size() - 1));
+        int end_point_idx = received_pin_point_indices_[4];
 
         std::vector<geometry_msgs::PoseStamped> plan_initial_global_map;
         std::vector<geometry_msgs::PoseStamped> plan_replan1_global_map;
@@ -271,29 +271,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         
         ROS_INFO("size: %lu", latest_plan_global.size());
         ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d, end_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx, end_point_idx);
-        if (current_idx < latest_plan_global.size()) {
-            ROS_INFO("current_idx Position: x = %.2f, y = %.2f", 
-                latest_plan_global[current_idx].pose.position.x, 
-                latest_plan_global[current_idx].pose.position.y);
-        }
-
-        if (start_idx < latest_plan_global.size()) {
-            ROS_INFO("start_idx Position: x = %.2f, y = %.2f", 
-                latest_plan_global[start_idx].pose.position.x, 
-                latest_plan_global[start_idx].pose.position.y);
-        }
-
-        if (ahead_idx < latest_plan_global.size()) {
-            ROS_INFO("ahead_idx Position: x = %.2f, y = %.2f", 
-                latest_plan_global[ahead_idx].pose.position.x, 
-                latest_plan_global[ahead_idx].pose.position.y);
-        }
-
-        if (pin_point_idx < latest_plan_global.size()) {
-            ROS_INFO("pin_point_idx Position: x = %.2f, y = %.2f", 
-                latest_plan_global[pin_point_idx].pose.position.x, 
-                latest_plan_global[pin_point_idx].pose.position.y);
-        }
 
         // 1. latest_plan_global[0] ~ latest_plan_global[start_idx - 1]
         if (start_idx <= latest_plan_global.size()) {

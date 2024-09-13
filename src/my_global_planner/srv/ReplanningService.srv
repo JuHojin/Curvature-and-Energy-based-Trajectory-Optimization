@@ -5,6 +5,7 @@ int32 current_idx
 int32 start_idx
 int32 ahead_idx
 int32 replanning_idx
+int32 end_idx
 ---
 # Response
 bool success

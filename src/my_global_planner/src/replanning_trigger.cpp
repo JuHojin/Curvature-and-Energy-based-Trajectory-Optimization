@@ -358,6 +358,7 @@ private:
             srv.request.start_idx = start_idx;
             srv.request.ahead_idx = ahead_idx;
             srv.request.replanning_idx = replanning_idx;
+            srv.request.end_idx = std::min(replanning_idx + (ahead_idx - start_idx), static_cast<int>(current_plan_world_.poses.size() - 1));
 
             if (client.call(srv)) {
                 if (srv.response.success) {
