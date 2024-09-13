@@ -40,6 +40,11 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Boundaries
         Boundaries Boundaries = getBoundaries(path, normal_vectors, local);
+        
+        // for (size_t i = 0; i < Boundaries.left_bnd.distances.size(); ++i) {
+        //     ROS_INFO("Distance[%zu]: %f", i, Boundaries.left_bnd.distances[i]);
+        // }
+
 
         // Publish Boundary Lines
         // Normal planning
@@ -366,8 +371,10 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
 
 // version 3
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool use_local_costmap) {
-    int map_x = static_cast<int>(point.x());
-    int map_y = static_cast<int>(point.y());
+    double map_x = point.x();
+    double map_y = point.y();
+    // int map_x = static_cast<int>(point.x());
+    // int map_y = static_cast<int>(point.y());
 
     int last_valid_d = 0;
 
@@ -376,34 +383,47 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
         const nav_msgs::OccupancyGrid::ConstPtr& costmap_msg = local_costmap_msg;
 
         if (map_x < 0 || map_y < 0 || map_x >= costmap_msg->info.width || map_y >= costmap_msg->info.height) {
-            ROS_WARN("Point (%d, %d) is out of local costmap bounds.", map_x, map_y);
+            ROS_WARN("Point (%f, %f) is out of local costmap bounds (%d, %d).", map_x, map_y, costmap_msg->info.width, costmap_msg->info.height);
             return Constant::DEV_MAX;
         }
 
         bool found_valid_point = false;
 
         for (int d = 0; d < Constant::DEV_MAX; ++d) {
-            int new_map_x = static_cast<int>(point.x() + d * dx);
-            int new_map_y = static_cast<int>(point.y() + d * dy);
+            int new_map_x = point.x() + d * dx;
+            int new_map_y = point.y() + d * dy;
 
             if (new_map_x < 0 || new_map_y < 0 || new_map_x >= costmap_msg->info.width || new_map_y >= costmap_msg->info.height) {
+                ROS_WARN("new_map_x or new_map_y is out of bounds.");
                 break;
             }
 
             bool is_valid_point = true;
-            int index = new_map_y * costmap_msg->info.width + new_map_x;
-            if (costmap_msg->data[index] >= Constant::OBSTACLE_INFLATION) {
+            int index = static_cast<int>(new_map_y * costmap_msg->info.width + new_map_x);
+            // ROS_INFO("Checking index %d: costmap value = %d", index, costmap_msg->data[index]);
+
+            unsigned char cost = costmap_msg->data[index];
+            if (cost >= Constant::OBSTACLE_INFLATION || cost == costmap_2d::NO_INFORMATION) {
                 is_valid_point = false;
+                // ROS_INFO("Point is inside an obstacle or inflation zone.");
             }
 
             if (is_valid_point) {
                 last_valid_d = d;
                 found_valid_point = true;
+                // ROS_INFO("Valid point found at distance %d", d);
             } else if (found_valid_point) {
+                // ROS_INFO("Found a valid point before, stopping search.");
                 break;
             }
         }
-    } 
+
+        if (found_valid_point) {
+            ROS_INFO("Last valid point found at distance %d", last_valid_d);
+        } else {
+            ROS_WARN("No valid point found within %d iterations.", Constant::DEV_MAX);
+        }
+    }
     // Normal planning
     else {
         if (!costmap) {
@@ -415,7 +435,7 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
         unsigned int size_y = costmap->getSizeInCellsY();
 
         if (map_x >= size_x || map_y >= size_y) {
-            ROS_WARN("Point (%d, %d) is out of global costmap bounds.", map_x, map_y);
+            ROS_WARN("Point (%f, %f) is out of global costmap bounds.", map_x, map_y);
             return Constant::DEV_MAX;
         }
 
@@ -430,7 +450,8 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
             }
 
             bool is_valid_point = true;
-            if (costmap->getCost(new_map_x, new_map_y) >= Constant::OBSTACLE_INFLATION) {
+            unsigned char cost = costmap->getCost(new_map_x, new_map_y);
+            if (cost >= Constant::OBSTACLE_INFLATION || cost == costmap_2d::NO_INFORMATION) {
                 is_valid_point = false;
             }
 

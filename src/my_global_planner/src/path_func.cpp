@@ -269,7 +269,7 @@ double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_r
                 unsigned char cost = costmap->getCost(x, y);
                 
                 // Check if the cell is an obstacle (considering a threshold)
-                if (cost >= costmap_2d::LETHAL_OBSTACLE) {
+                if (cost >= Constant::OBSTACLE_INFLATION) {
                     double dist = std::sqrt(std::pow(dx, 2) + std::pow(dy, 2));
                     if (dist <= searching_radius) {
                         distances.push_back(dist);
