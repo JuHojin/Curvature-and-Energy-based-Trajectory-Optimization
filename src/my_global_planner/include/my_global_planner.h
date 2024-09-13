@@ -19,6 +19,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include "my_global_planner/ReplanningService.h"
 #include "a_star.h"
 
 namespace my_global_planner {
@@ -67,13 +68,15 @@ public:
                   const geometry_msgs::PoseStamped& goal,
                   std::vector<geometry_msgs::PoseStamped>& plan);
     void replanningIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+    bool handleReplanningRequest(my_global_planner::ReplanningService::Request &req, my_global_planner::ReplanningService::Response &res);
 
 private:
     geometry_msgs::PoseStamped start_;
     geometry_msgs::PoseStamped goal_;
-    std::vector<geometry_msgs::PoseStamped> plan_;
+    std::vector<geometry_msgs::PoseStamped> latest_plan_global;
     bool replanning_mode;
-    std::vector<int> received_pin_point_indices_;
+    std::array<int, 4> received_pin_point_indices_;
+    nav_msgs::Path replanned_path_world;
 
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
@@ -81,18 +84,20 @@ private:
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
     ros::Publisher plan_publisher_uniform;
-    ros::Publisher plan_publisher_final;
+    ros::Publisher plan_publisher_initial;
     ros::Publisher plan_publisher_replan;
     ros::Publisher plan_publisher_last_opt;
     ros::Publisher profile_publisher;
     ros::Publisher constraints_publisher;
     ros::Publisher pin_points_publisher;
     ros::Publisher pin_point_indices_publisher;
+    ros::Publisher replan_status_publisher;
 
     ros::Subscriber replanning_trigger_sub;
-    // ros::Subscriber pin_point_indices_sub_;
     ros::Subscriber replanning_indices_sub;
     ros::Subscriber local_costmap_sub;
+
+    ros::ServiceServer replan_service_;
     
     void replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg);
     void localCostmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg);

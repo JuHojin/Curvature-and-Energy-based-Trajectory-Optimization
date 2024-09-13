@@ -13,6 +13,8 @@
 #include "opt_curv.h"
 #include "constant.h"
 #include "boundaries.h"
+#include "my_global_planner/PinPoints.h"
+#include "my_global_planner/TriggerStatus.h"
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -41,6 +43,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     replanning_mode = false;
     
     ros::NodeHandle private_nh("~/" + name);
+    // Publisher
     plan_publisher_a_star = private_nh.advertise<nav_msgs::Path>("plan/a_star_plan", 1);
     plan_publisher_pose_smooth = private_nh.advertise<nav_msgs::Path>("plan/post_smooth", 1);
     plan_publisher_uniform = private_nh.advertise<nav_msgs::Path>("plan/uniform", 1);
@@ -50,54 +53,76 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     plan_publisher_bnd_R_replan = private_nh.advertise<nav_msgs::Path>("plan/bnd_R_replan", 1);
     plan_publisher_opt = private_nh.advertise<nav_msgs::Path>("plan/opt", 1);
     plan_publisher_last_opt = private_nh.advertise<nav_msgs::Path>("plan/last_opt", 1);
-    plan_publisher_final = private_nh.advertise<nav_msgs::Path>("plan/final", 1);
+    plan_publisher_initial = private_nh.advertise<nav_msgs::Path>("plan/initial", 1);
     plan_publisher_replan = private_nh.advertise<nav_msgs::Path>("plan/replan", 1);
+
     profile_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_profile", 10);
     constraints_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_constraints", 10);
-    pin_points_publisher = private_nh.advertise<geometry_msgs::PoseArray>("pin_point_list", 10);
-    pin_point_indices_publisher = private_nh.advertise<std_msgs::Int32MultiArray>("pin_point_indices", 10);
+    pin_points_publisher = private_nh.advertise<my_global_planner::PinPoints>("pin_points", 10);
+    replan_status_publisher = private_nh.advertise<std_msgs::Bool>("replan_status", 10);
 
     ros::NodeHandle nh;
-    replanning_trigger_sub = nh.subscribe("/move_base/MyGlobalPlanner/replanning_trigger", 1, &MyGlobalPlanner::replanningTriggerCallback, this);
-    replanning_indices_sub = nh.subscribe("/replanning_trigger/replanning_index", 1, &MyGlobalPlanner::replanningIndicesCallback, this);
+    // Subscriber
+    // replanning_trigger_sub = nh.subscribe("/move_base/MyGlobalPlanner/replanning_trigger", 1, &MyGlobalPlanner::replanningTriggerCallback, this);
+    // replanning_indices_sub = nh.subscribe("/replanning_trigger/replanning_index", 1, &MyGlobalPlanner::replanningIndicesCallback, this);
     local_costmap_sub = nh.subscribe("/move_base/local_costmap/costmap", 10, &MyGlobalPlanner::localCostmapCallback, this);
+
+    // Service
+    replan_service_ = nh.advertiseService("replanning_service", &MyGlobalPlanner::handleReplanningRequest, this);
+
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
 
 // ========================================
 // Callback Functions
 // ========================================
-void MyGlobalPlanner::replanningTriggerCallback(const std_msgs::Bool::ConstPtr& msg) {
-    replanning_mode = msg->data;
+bool MyGlobalPlanner::handleReplanningRequest(my_global_planner::ReplanningService::Request &req,
+                                              my_global_planner::ReplanningService::Response &res) {
+
+    ROS_INFO("ReplanningService Request received:");
+    ROS_INFO("replanning_status: %s", req.replanning_status ? "true" : "false");
+    ROS_INFO("current_idx: %d", req.current_idx);
+    ROS_INFO("start_idx: %d", req.start_idx);
+    ROS_INFO("ahead_idx: %d", req.ahead_idx);
+    ROS_INFO("replanning_idx: %d", req.replanning_idx);
+
+    replanning_mode = req.replanning_status;
+    received_pin_point_indices_ = {req.current_idx, req.start_idx, req.ahead_idx, req.replanning_idx};
+
     if (replanning_mode) {
-        ROS_INFO("Replanning Triggered");
+        ROS_INFO("Replanning Triggered via service");
 
         if (!start_.header.frame_id.empty() && !goal_.header.frame_id.empty()) {
-            bool success = makePlan(start_, goal_, plan_);
+            bool success = makePlan(start_, goal_, latest_plan_global);
             if (success) {
                 ROS_INFO("Replanning successful");
-                // need to update 'plan' in original makePlan
+                res.success = true;
+                res.replanned_path = replanned_path_world;
             } else {
                 ROS_WARN("Replanning failed");
+                res.success = false;
             }
         } else {
             ROS_ERROR("Start or Goal not set for replanning");
+            res.success = false;
         }
-
-        replanning_mode = false;
     } else {
-        // ROS_INFO("No Replanning");
+        res.success = false;
     }
+
+    replanning_mode = false;
+    return true;
 }
 
-void MyGlobalPlanner::replanningIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg) {
-    received_pin_point_indices_ = msg->data;
+
+// void MyGlobalPlanner::replanningIndicesCallback(const std_msgs::Int32MultiArray::ConstPtr& msg) {
+//     received_pin_point_indices_ = msg->data;
     
-    // ROS_INFO("Received %lu pin point indices:", received_pin_point_indices_.size());
-    // for (size_t i = 0; i < received_pin_point_indices_.size(); ++i) {
-    //     ROS_INFO("Index %lu: %d", i, received_pin_point_indices_[i]);
-    // }
-}
+//     // ROS_INFO("Received %lu pin point indices:", received_pin_point_indices_.size());
+//     // for (size_t i = 0; i < received_pin_point_indices_.size(); ++i) {
+//     //     ROS_INFO("Index %lu: %d", i, received_pin_point_indices_[i]);
+//     // }
+// }
 
 void MyGlobalPlanner::localCostmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
     local_costmap_msg = msg;
@@ -140,7 +165,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Check if goal is valid
         unsigned char goal_cost = costmap->getCost(goal_x, goal_y);
-        if (goal_cost >= costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+        if (goal_cost >= Constant::OBSTACLE_INFLATION) {
             ROS_WARN("Goal position is inside an obstacle or inflation layer. Skipping planning.");
             return false;
         }
@@ -184,7 +209,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
         std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
         nav_msgs::Path final_plan_world = producePathMapToWorld(final_plan);
-        publishPath(plan_publisher_final, final_plan_world);
+        publishPath(plan_publisher_initial, final_plan_world);
 
         // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
         //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
@@ -193,12 +218,11 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Update pin points (based on final_plan)
         auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
-        geometry_msgs::PoseArray updated_pin_point_list = updated_pin_points.first;
-        std::vector<int> updated_pin_point_indices = updated_pin_points.second;
-        std_msgs::Int32MultiArray indices_msg;
-        indices_msg.data = updated_pin_point_indices;
-        pin_points_publisher.publish(updated_pin_point_list);
-        pin_point_indices_publisher.publish(indices_msg);
+        my_global_planner::PinPoints pin_points_msg;
+        pin_points_msg.pose_array = updated_pin_points.first;
+        pin_points_msg.index_array.data.clear();
+        pin_points_msg.index_array.data.insert(pin_points_msg.index_array.data.end(), updated_pin_points.second.begin(), updated_pin_points.second.end());
+        pin_points_publisher.publish(pin_points_msg);
 
         // Calculate velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
@@ -212,7 +236,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
-        plan_ = final_plan;
+        latest_plan_global = final_plan;
         plan = final_plan_world.poses;
 
         return a_star_success;
@@ -229,132 +253,131 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         int ahead_idx = received_pin_point_indices_[2];
         int pin_point_idx = received_pin_point_indices_[3];
 
-        std::vector<geometry_msgs::PoseStamped> plan_initial;
-        std::vector<geometry_msgs::PoseStamped> plan_replan1;
-        std::vector<geometry_msgs::PoseStamped> plan_replan2;
-        std::vector<Eigen::Vector2d> path_replan;
-        std::vector<Eigen::Vector2d> path_replan1;
-        std::vector<Eigen::Vector2d> path_replan2;
-        std::vector<Eigen::Vector2d> path_replan_local;
-        std::vector<Eigen::Vector2d> path_opt_replan_local;
+        std::vector<geometry_msgs::PoseStamped> plan_initial_global_map;
+        std::vector<geometry_msgs::PoseStamped> plan_replan1_global_map;
+        std::vector<geometry_msgs::PoseStamped> plan_replan2_global_map;
+        std::vector<Eigen::Vector2d> path_replan_global_map;
+        std::vector<Eigen::Vector2d> path_replan1_global_map;
+        std::vector<Eigen::Vector2d> path_replan2_global_map;
+        std::vector<Eigen::Vector2d> path_replan_local_map;
+        std::vector<Eigen::Vector2d> path_opt_replan_local_map;
         std::vector<geometry_msgs::PoseStamped> plan_opt_replan;
         std::vector<geometry_msgs::PoseStamped> plan_final;
         
-        // ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx);
+        ROS_INFO("Indices: current_idx = %d, start_idx = %d, ahead_idx = %d, pin_point_idx = %d", current_idx, start_idx, ahead_idx, pin_point_idx);
 
-        // 1. plan_[0] ~ plan_[start_idx - 1]
-        plan_initial.insert(plan_initial.end(), plan.begin(), plan.begin() + start_idx);
+        // 1. latest_plan_global[0] ~ latest_plan_global[start_idx - 1]
+        plan_initial_global_map.insert(plan_initial_global_map.end(), latest_plan_global.begin(), latest_plan_global.begin() + start_idx) + 1;
         
-        // 2.1. plan_[start_idx] ~ plan_[ahead_idx - 1]
-        plan_replan1.insert(plan_replan1.end(), plan.begin() + start_idx, plan.begin() + ahead_idx);
-        path_replan1 = convertPoseStampedToVector2d(plan_replan1);
+        // 2.1. latest_plan_global[start_idx] ~ latest_plan_global[ahead_idx - 1]
+        plan_replan1_global_map.insert(plan_replan1_global_map.end(), latest_plan_global.begin() + start_idx, latest_plan_global.begin() + ahead_idx);
+        path_replan1_global_map = convertPoseStampedToVector2d(plan_replan1_global_map);
         
-        // 2.2. Uniformly spaced points between plan_[ahead_idx] and plan_[pin_point_idx]
-        plan_replan2.push_back(plan[ahead_idx]);
-        plan_replan2.push_back(plan[pin_point_idx]);
-        path_replan2 = convertPoseStampedToVector2d(plan_replan2);
-        path_replan2 = uniformSpacing(path_replan2);
+        // 2.2. Uniformly spaced points between latest_plan_global[ahead_idx] and latest_plan_global[pin_point_idx]
+        plan_replan2_global_map.push_back(latest_plan_global[ahead_idx]);
+        plan_replan2_global_map.push_back(latest_plan_global[pin_point_idx]);
+        path_replan2_global_map = convertPoseStampedToVector2d(plan_replan2_global_map);
+        path_replan2_global_map = uniformSpacing(path_replan2_global_map);
         
-        // 2.3. combine path_replan1 and path_replan2 to path_replan
-        path_replan.reserve(path_replan1.size() + path_replan2.size());
-        path_replan.insert(path_replan.end(), path_replan1.begin(), path_replan1.end());
-        path_replan.insert(path_replan.end(), path_replan2.begin(), path_replan2.end());
+        // 2.3. combine path_replan1_global_map and path_replan2_global_map to path_replan_global_map
+        path_replan_global_map.reserve(path_replan1_global_map.size() + path_replan2_global_map.size());
+        path_replan_global_map.insert(path_replan_global_map.end(), path_replan1_global_map.begin(), path_replan1_global_map.end());
+        path_replan_global_map.insert(path_replan_global_map.end(), path_replan2_global_map.begin(), path_replan2_global_map.end());
+        path_replan_global_map = uniformSpacing(path_replan_global_map);
         
-
         // 2.4. Optimizatoin
-        for (const auto& pose : path_replan) {
-            double mx = pose.x();
-            double my = pose.y();
+        float resolution = local_costmap_msg->info.resolution;
+        double local_costmap_x = local_costmap_msg->info.origin.position.x;
+        double local_costmap_y = local_costmap_msg->info.origin.position.y;
 
+        for (const auto& pose_global_map : path_replan_global_map) {
             // 1. map to world using costmap
             double wx, wy;
-            convertMapToWorld(mx, my, wx, wy);
-            Eigen::Vector2d global_point(wx, wy);
-            ROS_INFO("Global Point in World Frame: (%.2f, %.2f)", wx, wy);
+            convertMapToWorld(pose_global_map.x(), pose_global_map.y(), wx, wy);
+            Eigen::Vector2d point_global_world(wx, wy);
+            // ROS_INFO("Global Point in World Frame: (%.2f, %.2f)", wx, wy);
 
             // 2. Global -> Local (map frame -> odom frame)
-            Eigen::Vector2d local_point = globalToLocal(global_point, *local_costmap_msg, "odom", tf_buffer_);
+            Eigen::Vector2d point_local_world = globalToLocal(point_global_world, *local_costmap_msg, "odom", tf_buffer_);
 
             // 3. world to map using local_costmap_msg
-            int local_map_x = static_cast<int>((local_point.x() - local_costmap_msg->info.origin.position.x) / local_costmap_msg->info.resolution);
-            int local_map_y = static_cast<int>((local_point.y() - local_costmap_msg->info.origin.position.y) / local_costmap_msg->info.resolution);
+            Eigen::Vector2d point_local_map;
+            point_local_map.x() = (point_local_world.x() - local_costmap_x) / resolution;
+            point_local_map.y() = (point_local_world.y() - local_costmap_y) / resolution;
 
-            ROS_INFO("Transformed local_point: %.2f, %.2f -> Map Coordinates: (%d, %d)", local_point.x(), local_point.y(), local_map_x, local_map_y);
-            path_replan_local.push_back(Eigen::Vector2d(local_map_x, local_map_y));
+            // ROS_INFO("Transformed local_point: %.2f, %.2f -> Map Coordinates: (%d, %d)", point_local_world.x(), point_local_world.y(), local_map_x, local_map_y);
+            path_replan_local_map.push_back(point_local_map);
         }
 
-        path_opt_replan_local = optimize_min_curvature(path_replan_local, Constant::MAX_OPT_ITER, true, tf_buffer_);
+        path_opt_replan_local_map = optimize_min_curvature(path_replan_local_map, Constant::MAX_OPT_ITER, true, tf_buffer_);
 
-        ROS_INFO("path_opt_replan_local contains %lu points", path_opt_replan_local.size());
-        for (size_t i = 0; i < path_opt_replan_local.size(); ++i) {
-            const Eigen::Vector2d& point = path_opt_replan_local[i];
-            ROS_INFO("Point %lu: (x: %.2f, y: %.2f)", i, point.x(), point.y());
-        }
+        // ROS_INFO("path_opt_replan_local_map contains %lu points", path_opt_replan_local_map.size());
+        // for (size_t i = 0; i < path_opt_replan_local_map.size(); ++i) {
+        //     const Eigen::Vector2d& point = path_opt_replan_local_map[i];
+        //     ROS_INFO("Point %lu: (x: %.2f, y: %.2f)", i, point.x(), point.y());
+        // }
 
-        for (const auto& local_point : path_opt_replan_local) {
+        for (const auto& point_local_map : path_opt_replan_local_map) {
             // 1. map to world using local_costmap_msg
-            double local_wx = local_point.x() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.x;
-            double local_wy = local_point.y() * local_costmap_msg->info.resolution + local_costmap_msg->info.origin.position.y;
-            Eigen::Vector2d local_world_point(local_wx, local_wy);
-            ROS_INFO("Step 1: Local World Point: (%.2f, %.2f)", local_wx, local_wy);
+            Eigen::Vector2d local_world_point;
+            local_world_point.x() = point_local_map.x() * resolution + local_costmap_x;
+            local_world_point.y() = point_local_map.y() * resolution + local_costmap_y;
+            // ROS_INFO("Step 1: Local World Point: (%.2f, %.2f)", local_world_point.x(), local_world_point.y());
 
             // 2. Local -> Global (odom frame -> map frame)
-            geometry_msgs::PoseStamped global_pose = localToGlobal(local_world_point, *local_costmap_msg, "odom", tf_buffer_);
-            ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
+            geometry_msgs::PoseStamped pose_global_world = localToGlobal(local_world_point, *local_costmap_msg, "odom", tf_buffer_);
+            // ROS_INFO("Step 2: Transformed Global Pose: (%.2f, %.2f)", pose_global_world.pose.position.x, pose_global_world.pose.position.y);
 
             // 3. world to map using costmap
             double mx, my;
-            if (convertWorldToMap(global_pose.pose.position.x, global_pose.pose.position.y, mx, my)) {
-                ROS_INFO("Step 3: Map Coordinates (mx, my): (%.2f, %.2f)", mx, my);
+            if (convertWorldToMap(pose_global_world.pose.position.x, pose_global_world.pose.position.y, mx, my)) {
+                // ROS_INFO("Step 3: Map Coordinates (mx, my): (%.2f, %.2f)", mx, my);
 
-                global_pose.pose.position.x = mx;
-                global_pose.pose.position.y = my;
-                global_pose.pose.position.z = 0.0;
-                global_pose.pose.orientation.w = 1.0;
+                pose_global_world.pose.position.x = mx;
+                pose_global_world.pose.position.y = my;
+                pose_global_world.pose.position.z = 0.0;
+                pose_global_world.pose.orientation.w = 1.0;
 
-                plan_opt_replan.push_back(global_pose);
+                plan_opt_replan.push_back(pose_global_world);
 
-                ROS_INFO("Global pose added: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
+                // ROS_INFO("Global pose added: (%.2f, %.2f)", pose_global_world.pose.position.x, pose_global_world.pose.position.y);
             } else {
-                ROS_WARN("Step 3: Point (%.2f, %.2f) is out of global costmap bounds", global_pose.pose.position.x, global_pose.pose.position.y);
+                // ROS_WARN("Step 3: Point (%.2f, %.2f) is out of global costmap bounds", pose_global_world.pose.position.x, pose_global_world.pose.position.y);
             }
         }
 
-        updateOrientation(plan_opt_replan);
-
-        // 3. plan_[pin_point_idx + 1] ~ plan_[plan_.back()]
-        if (pin_point_idx < plan.size() - 1) {
-            plan_final.insert(plan_final.end(), plan.begin() + pin_point_idx + 1, plan.end());
+        // 3. latest_plan_global[pin_point_idx + 1] ~ latest_plan_global[latest_plan_global.back()]
+        if (pin_point_idx < latest_plan_global.size() - 1) {
+            plan_final.insert(plan_final.end(), latest_plan_global.begin() + pin_point_idx + 1, latest_plan_global.end());
         } else {
-            ROS_WARN("pin_point_idx + 1 is out of bounds. Skipping final plan insertion.");
-            ROS_INFO("pin_point_idx: %d, plan size: %lu", pin_point_idx, plan.size());
+            ROS_WARN("pin_point_idx + 1 is out of bounds. Skipping final latest_plan_global insertion.");
+            ROS_INFO("pin_point_idx: %d, latest_plan_global size: %lu", pin_point_idx, latest_plan_global.size());
         }
 
-        // Combine all plans into the plan
-        plan.clear();
-        ROS_INFO("Before insertion: plan size = %lu, plan_initial size = %lu", plan.size(), plan_initial.size());
-        plan.insert(plan.end(), plan_initial.begin(), plan_initial.end());
-        ROS_INFO("After insertion: plan size = %lu", plan.size());
+        // Combine all plans into the latest_plan_global
+        latest_plan_global.clear();
+        latest_plan_global.insert(latest_plan_global.end(), plan_initial_global_map.begin(), plan_initial_global_map.end());
+        latest_plan_global.insert(latest_plan_global.end(), plan_opt_replan.begin(), plan_opt_replan.end());
+        latest_plan_global.insert(latest_plan_global.end(), plan_final.begin(), plan_final.end());
+        updateOrientation(latest_plan_global);
 
-        plan.insert(plan.end(), plan_opt_replan.begin(), plan_opt_replan.end());
-        plan.insert(plan.end(), plan_final.begin(), plan_final.end());
 
-        nav_msgs::Path plan_world = producePathMapToWorld(plan);
-        publishPath(plan_publisher_replan, plan_world);
-        for (size_t i = 0; i < plan.size(); ++i) {
-            const geometry_msgs::PoseStamped& pose = plan[i];
-            ROS_INFO("Pose %lu: Position (x: %f, y: %f)", i, pose.pose.position.x, pose.pose.position.y);
-        }
+        replanned_path_world = producePathMapToWorld(latest_plan_global);
+        // for (size_t i = 0; i < latest_plan_global.size(); ++i) {
+        //     const geometry_msgs::PoseStamped& pose = latest_plan_global[i];
+        //     ROS_INFO("Pose %lu: Position (x: %f, y: %f)", i, pose.pose.position.x, pose.pose.position.y);
+        // }
 
         // Calculate velocity Profile
-        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(plan_world);
+        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(replanned_path_world);
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
 
-        replanning_mode = false;
+        publishPath(plan_publisher_replan, replanned_path_world);
+
         return true;
     }
 }
@@ -699,7 +722,7 @@ geometry_msgs::PoseStamped localToGlobal(const Eigen::Vector2d& local_point, con
     try {
         tf_buffer_.transform(local_pose, global_pose, "map", ros::Duration(1.0));
 
-        ROS_INFO("Transformed local pose to global pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
+        // ROS_INFO("Transformed local pose to global pose: (%.2f, %.2f)", global_pose.pose.position.x, global_pose.pose.position.y);
     } catch (tf2::TransformException& ex) {
         ROS_WARN("Transform failed: %s", ex.what());
     }

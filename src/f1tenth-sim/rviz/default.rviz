@@ -6,7 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /MarkerArray1
+        - /Final Path1
+        - /Replan Path1
       Splitter Ratio: 0.5
     Tree Height: 822
   - Class: rviz/Selection
@@ -81,32 +82,32 @@ Visualization Manager:
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: true
-      Enabled: false
+      Enabled: true
       Name: Global Cost Map
       Topic: /move_base/global_costmap/costmap
       Unreliable: false
       Use Timestamp: false
-      Value: false
-    - Alpha: 0.699999988079071
-      Class: rviz/Map
-      Color Scheme: map
-      Draw Behind: false
-      Enabled: false
-      Name: Local Cost Map
-      Topic: /move_base/local_costmap/costmap
-      Unreliable: false
-      Use Timestamp: false
-      Value: false
+      Value: true
     - Alpha: 0.699999988079071
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: false
       Enabled: true
+      Name: Local Cost Map
+      Topic: /move_base/local_costmap/costmap
+      Unreliable: false
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.699999988079071
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: false
       Name: Map
       Topic: /map
       Unreliable: false
       Use Timestamp: false
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -215,7 +216,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 196; 160; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.029999999329447746
       Head Length: 0.019999999552965164
       Length: 0.30000001192092896
@@ -233,7 +234,7 @@ Visualization Manager:
       Shaft Length: 0.009999999776482582
       Topic: /move_base/MyGlobalPlanner/plan/uniform
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -277,7 +278,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.05000000074505806
       Shaft Length: 0.10000000149011612
-      Topic: /move_base/MyGlobalPlanner/plan/final
+      Topic: /move_base/MyGlobalPlanner/plan/initial
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -296,11 +297,11 @@ Visualization Manager:
         Y: 0
         Z: 0
       Pose Color: 255; 85; 255
-      Pose Style: Arrows
+      Pose Style: None
       Radius: 0.029999999329447746
       Shaft Diameter: 0.05000000074505806
       Shaft Length: 0.10000000149011612
-      Topic: /move_base/MyGlobalPlanner/plan/replan
+      Topic: /move_base/MyGlobalPlanner/plan/final
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -396,17 +397,41 @@ Visualization Manager:
       Unreliable: false
       Value: true
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /replanning_trigger/line_marker
       Name: Replanning Line
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /replanning_trigger/pin_points_marker
+      Name: Pin Point
+      Namespaces:
+        pin_points: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /replannig_trigger/fixed_start_points_marker
+      Name: Fixed Start Point
       Namespaces:
         {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /replanning_trigger/pin_points_marker
-      Name: Pin Point
+      Marker Topic: /replannig_trigger/fixed_pin_points_marker
+      Name: Fixed Pin Point
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /replannig_trigger/fixed_ahead_points_marker
+      Name: Fixed Ahead Point
       Namespaces:
         {}
       Queue Size: 100
@@ -436,7 +461,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/valid_pin_points
       Name: MarkerArray
       Namespaces:
-        {}
+        valid_pin_points: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -467,16 +492,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 34.62864685058594
+      Distance: 31.877405166625977
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.35127177834510803
-        Y: 6.783125877380371
-        Z: -1.458274245262146
+        X: -5.534242153167725
+        Y: 5.551052093505859
+        Z: -1.459450602531433
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -503,5 +528,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1431
-  X: 2569
-  Y: 1377
+  X: 2637
+  Y: 240
