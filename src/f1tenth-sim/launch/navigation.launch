@@ -2,9 +2,14 @@
     <!-- Move Base -->
     <node name="move_base" pkg="move_base" type="move_base" respawn="false" output="screen">
         <rosparam file="$(find f1tenth-sim)/config/costmap_common_params.yaml" command="load" ns="global_costmap"/>
-        <rosparam file="$(find f1tenth-sim)/config/costmap_common_params.yaml" command="load" ns="local_costmap"/>
         <rosparam file="$(find f1tenth-sim)/config/global_costmap_params.yaml" command="load" ns="global_costmap"/>
+        <rosparam file="$(find f1tenth-sim)/config/costmap_common_params.yaml" command="load" ns="local_costmap"/>
         <rosparam file="$(find f1tenth-sim)/config/local_costmap_params.yaml" command="load" ns="local_costmap"/>
+        <!-- <rosparam file="$(find f1tenth-sim)/config/costmap_common_params.yaml" command="load" ns="obstacle_costmap"/>
+        <rosparam file="$(find f1tenth-sim)/config/obstacle_costmap_params.yaml" command="load" ns="obstacle_costmap"/> -->
         <rosparam file="$(find f1tenth-sim)/config/move_base_params.yaml" command="load"/>
+        <param name="recovery_behavior_enabled" value="false"/>
+        <param name="clearing_rotation_allowed" value="false"/>
+
     </node>
 </launch>

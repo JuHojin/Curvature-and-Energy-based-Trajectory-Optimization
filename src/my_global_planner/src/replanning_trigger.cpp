@@ -28,9 +28,9 @@ public:
 
         pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/pin_points_marker", 1);
         valid_pin_points_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/replanning_trigger/valid_pin_points", 1);
-        fixed_start_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_start_points_marker", 1);
-        fixed_ahead_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_ahead_points_marker", 1);
-        fixed_pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replannig_trigger/fixed_pin_points_marker", 1);
+        fixed_start_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/fixed_start_points_marker", 1);
+        fixed_ahead_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/fixed_ahead_points_marker", 1);
+        fixed_pin_points_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/fixed_pin_points_marker", 1);
         line_pub_ = nh_.advertise<visualization_msgs::Marker>("/replanning_trigger/line_marker", 1);
         start_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/start_point", 1);
         ahead_point_pub_ = nh_.advertise<geometry_msgs::PointStamped>("/replanning_trigger/ahead_point", 1);

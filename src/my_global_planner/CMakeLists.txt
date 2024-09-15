@@ -108,9 +108,9 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES my_global_planner
+  LIBRARIES my_global_planner dummy_recovery
   CATKIN_DEPENDS costmap_2d nav_core pluginlib roscpp message_runtime
-  DEPENDS system_lib
+  # DEPENDS system_lib
 )
 
 ###########
@@ -131,6 +131,8 @@ add_library(${PROJECT_NAME}
   src/opt_curv.cpp
   src/path_func.cpp
 )
+
+add_library(dummy_recovery src/dummy_recovery.cpp)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -161,6 +163,11 @@ target_link_libraries(${PROJECT_NAME}
 target_link_libraries(replanning_trigger
   ${catkin_LIBRARIES}
 )
+
+target_link_libraries(dummy_recovery
+  ${catkin_LIBRARIES}
+)
+
 # target_link_libraries(replanning_trigger
 #   ${catkin_LIBRARIES}
 # )

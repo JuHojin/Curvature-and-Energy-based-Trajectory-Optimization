@@ -6,8 +6,12 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Local Cost Map1
         - /Initial Path1
         - /Replan Path1
+        - /Fixed Start Point1
+        - /Fixed Pin Point1
+        - /Fixed Ahead Point1
       Splitter Ratio: 0.5
     Tree Height: 785
   - Class: rviz/Selection
@@ -401,7 +405,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/line_marker
       Name: Replanning Line
       Namespaces:
-        replanning_trigger: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -409,31 +413,31 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/pin_points_marker
       Name: Pin Point
       Namespaces:
-        pin_points: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /replannig_trigger/fixed_start_points_marker
+      Marker Topic: /replanning_trigger/fixed_start_points_marker
       Name: Fixed Start Point
       Namespaces:
-        fixed_start_points: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /replannig_trigger/fixed_pin_points_marker
+      Marker Topic: /replanning_trigger/fixed_pin_points_marker
       Name: Fixed Pin Point
       Namespaces:
-        fixed_pin_points: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /replannig_trigger/fixed_ahead_points_marker
+      Marker Topic: /replanning_trigger/fixed_ahead_points_marker
       Name: Fixed Ahead Point
       Namespaces:
-        fixed_ahead_points: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -461,7 +465,7 @@ Visualization Manager:
       Marker Topic: /replanning_trigger/valid_pin_points
       Name: MarkerArray
       Namespaces:
-        valid_pin_points: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -492,16 +496,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 31.626056671142578
+      Distance: 35.744529724121094
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -5.11341667175293
-        Y: 6.752589702606201
-        Z: -1.3476089239120483
+        X: -11.125502586364746
+        Y: 9.146551132202148
+        Z: -1.3332490921020508
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -529,4 +533,4 @@ Window Geometry:
     collapsed: true
   Width: 1817
   X: 619
-  Y: 155
+  Y: 95

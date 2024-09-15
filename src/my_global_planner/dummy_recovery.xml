@@ -1,0 +1,5 @@
+<library path="/devel_isolated/my_global_planner/lib/libdummy_recovery">
+    <class name="my_global_planner/DummyRecovery" type="my_global_planner::DummyRecovery" base_class_type="nav_core::RecoveryBehavior">
+      <description>This is my dummy recovery plugin.</description>
+    </class>
+</library>

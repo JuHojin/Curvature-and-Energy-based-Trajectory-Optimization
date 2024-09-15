@@ -3,30 +3,23 @@ base_global_planner: "my_global_planner/MyGlobalPlanner"
 # base_global_planner: "navfn/NavfnROS"
 base_local_planner: "dwa_local_planner/DWAPlannerROS"
 
-# Recovery Behaviors
-recovery_behaviors:
-  - name: "conservative_reset"
-    type: "clear_costmap_recovery/ClearCostmapRecovery"
-  - name: "rotate_recovery"
-    type: "rotate_recovery/RotateRecovery"
-  - name: "aggressive_reset"
-    type: "clear_costmap_recovery/ClearCostmapRecovery"
-
 # Controller Settings
 controller_frequency: 20.0  # Frequency in Hz for the control loop
 controller_patience: 15.0   # Seconds to wait without a valid control before recovery
 
+recovery_behaviors: []
+
 # Planner Settings
 planner_frequency: 0.0      # Frequency in Hz to run the global planning loop
-planner_patience: 10000.0       # Seconds to wait for a valid plan before recovery
+planner_patience: 10000.0   # Seconds to wait for a valid plan before recovery
 max_planning_retries: -1    # Number of planning retries before recovery; -1 for infinite
 
 # Recovery and Oscillation
-recovery_behavior_enabled: false  # Enable or disable recovery behaviors
-conservative_reset_dist: 3.0     # Distance in meters to clear obstacles from the costmap
-clearing_rotation_allowed: true  # Allow in-place rotation during recovery
-oscillation_timeout: 0.0         # Timeout in seconds for oscillation; 0 for infinite
-oscillation_distance: 0.5        # Distance in meters to reset oscillation timer
+recovery_behavior_enabled: false  # Fully disable recovery behaviors
+conservative_reset_dist: 3.0      # Distance in meters to clear obstacles from the costmap
+clearing_rotation_allowed: true   # Allow in-place rotation during recovery
+oscillation_timeout: 0.0          # Timeout in seconds for oscillation; 0 for infinite
+oscillation_distance: 0.5         # Distance in meters to reset oscillation timer
 
 # Costmap Management
 shutdown_costmaps: false    # Shutdown costmaps when move_base is inactive
@@ -34,4 +27,3 @@ shutdown_costmaps: false    # Shutdown costmaps when move_base is inactive
 # Local Planner
 DWAPlannerROS:
   obstacle_range: 0
-

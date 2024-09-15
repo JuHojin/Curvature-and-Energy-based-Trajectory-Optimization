@@ -14,7 +14,6 @@
 #include "constant.h"
 #include "boundaries.h"
 #include "my_global_planner/PinPoints.h"
-#include "my_global_planner/TriggerStatus.h"
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
