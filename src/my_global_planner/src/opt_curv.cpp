@@ -150,7 +150,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         double end_angle = std::atan2(end_segment.y(), end_segment.x());
 
         // Alpha calculation
-        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle);
+        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle, Constant::GAMMA);
         alpha = result.first;
         int success = result.second;
 
@@ -190,21 +190,21 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 // Path Geometry Extractors
 // ========================================
 Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
-    int numPoints = path.size();
-    int numSplines = numPoints - 1;
-    Eigen::VectorXd pointDist(numSplines);
+    int num_points = path.size();
+    int num_splines = num_points - 1;
+    Eigen::VectorXd pointDist(num_splines);
 
     // Calculate distances between consecutive points
-    for (int i = 0; i < numSplines; ++i) {
+    for (int i = 0; i < num_splines; ++i) {
         pointDist(i) = (path[i + 1] - path[i]).norm();
     }
 
-    Eigen::VectorXd scaling(numSplines - 1);
-    for (int i = 0; i < numSplines - 1; ++i) {
+    Eigen::VectorXd scaling(num_splines - 1);
+    for (int i = 0; i < num_splines - 1; ++i) {
         scaling(i) = pointDist(i) / pointDist(i + 1);
     }
 
-    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(numSplines * 4, numSplines * 4);
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(num_splines * 4, num_splines * 4);
 
     // Base matrix for constraints, repeated in A
     Eigen::MatrixXd baseA(4, 8);
@@ -214,10 +214,10 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
                 0, 0, 2, 6, 0, 0, -2, 0;
 
     // Construct the system matrix with appropriate scaling for continuity constraints
-    for (int i = 0; i < numSplines; ++i) {
+    for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
 
-        if (i < numSplines - 1) {
+        if (i < num_splines - 1) {
             A.block(j, j, 4, 8) = baseA;
 
             // Apply scaling factors to the derivative constraints
@@ -230,12 +230,12 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     }
 
     // Starting point heading constraint
-    A(numSplines * 4 - 2, 1) = 1;
+    A(num_splines * 4 - 2, 1) = 1;
 
     // End point heading constraint
-    A(numSplines * 4 - 1, numSplines * 4 - 4 + 1) = 1;
-    A(numSplines * 4 - 1, numSplines * 4 - 4 + 2) = 2;
-    A(numSplines * 4 - 1, numSplines * 4 - 4 + 3) = 3;
+    A(num_splines * 4 - 1, num_splines * 4 - 4 + 1) = 1;
+    A(num_splines * 4 - 1, num_splines * 4 - 4 + 2) = 2;
+    A(num_splines * 4 - 1, num_splines * 4 - 4 + 3) = 3;
 
     return A;
 }
@@ -538,31 +538,39 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
                                                      const std::vector<Eigen::Vector2d>& normal_vectors,
                                                      const Eigen::MatrixXd& A,
                                                      double curvature_bnd,
-                                                     double start_angle, double end_angle) {
+                                                     double start_angle, double end_angle, double gamma) {
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
 
-    // Construct extraction matrices : b component extraction
+    // Construct extraction matrix : b component extraction for first derivative x'(t=0)
     Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
     for (int i = 0; i < num_splines; ++i) {
         A_ex_b(i, i * 4 + 1) = 1;
     }
-    A_ex_b.row(num_points - 1).tail(4) << 0, 1, 2, 3;
+    A_ex_b.row(num_points - 1).tail(4) << 0, 1, 2, 3; // extract first derivative x'(t=1) in the last point
 
-    // Construct extraction matrices : c component extraction
+    // Construct extraction matrix : c component extraction for second derivative x''(t=0)
     Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
     for (int i = 0; i < num_splines; ++i) {
         A_ex_c(i, i * 4 + 2) = 2;
     }
-    A_ex_c.row(num_points - 1).tail(4) << 0, 0, 2, 6;
+    A_ex_c.row(num_points - 1).tail(4) << 0, 0, 2, 6; // extract second derviative x''(t=1) in the last point
+
+    // Construct extraction matirx : b, c, d components extraction
+    Eigen::MatrixXd A_ex_bcd = Eigen::MatrixXd::Zero(num_points * 3, num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
+        A_ex_bcd(i * 3    , i * 4 + 1) = 1;
+        A_ex_bcd(i * 3 + 1, i * 4 + 2) = 1;
+        A_ex_bcd(i * 3 + 2, i * 4 + 3) = 1;
+    }
 
     // Eigen::MatrixXd A_inv = A.completeOrthogonalDecomposition().pseudoInverse();
     Eigen::MatrixXd A_inv = A.inverse();
     Eigen::MatrixXd T_c = A_ex_c * A_inv;
 
     // Construct normal vector matrix
-    Eigen::MatrixXd M_x = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
-    Eigen::MatrixXd M_y = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
+    Eigen::MatrixXd N_x = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
+    Eigen::MatrixXd N_y = Eigen::MatrixXd::Zero(num_splines * 4, num_points);
 
     for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
@@ -571,22 +579,22 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
         if (i < num_points - 1) {
             const auto& normal_next = normal_vectors[i + 1];
 
-            M_x(j, i) = normal.x();
-            M_x(j + 1, i + 1) = normal_next.x();
-            M_y(j, i) = normal.y();
-            M_y(j + 1, i + 1) = normal_next.y();
+            N_x(j, i) = normal.x();
+            N_x(j + 1, i + 1) = normal_next.x();
+            N_y(j, i) = normal.y();
+            N_y(j + 1, i + 1) = normal_next.y();
         } else {
-            M_x(j, i) = normal.x();
-            M_x(j + 1, 0) = normal_vectors[0].x();
+            N_x(j, i) = normal.x();
+            N_x(j + 1, 0) = normal_vectors[0].x();
 
-            M_y(j, i) = normal.y();
-            M_y(j + 1, 0) = normal_vectors[0].y();
+            N_y(j, i) = normal.y();
+            N_y(j + 1, 0) = normal_vectors[0].y();
         }
     }
 
     // Construct reference path vector
-    Eigen::VectorXd q_x = Eigen::VectorXd::Zero(num_splines * 4);
-    Eigen::VectorXd q_y = Eigen::VectorXd::Zero(num_splines * 4);
+    Eigen::VectorXd p_x = Eigen::VectorXd::Zero(num_splines * 4);
+    Eigen::VectorXd p_y = Eigen::VectorXd::Zero(num_splines * 4);
 
     for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
@@ -595,28 +603,28 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
         if (i < num_points - 1) {
             const auto& point_next = path[i + 1];
 
-            q_x(j) = point.x();
-            q_x(j + 1) = point_next.x();
+            p_x(j) = point.x();
+            p_x(j + 1) = point_next.x();
 
-            q_y(j) = point.y();
-            q_y(j + 1) = point_next.y();
+            p_y(j) = point.y();
+            p_y(j + 1) = point_next.y();
         } else {
-            q_x(j) = point.x();
-            q_x(j + 1) = path[0].x();
+            p_x(j) = point.x();
+            p_x(j + 1) = path[0].x();
 
-            q_y(j) = point.y();
-            q_y(j + 1) = path[0].y();
+            p_y(j) = point.y();
+            p_y(j + 1) = path[0].y();
         }
     }
 
-    q_x(num_splines * 4 - 2) = std::cos(start_angle);
-    q_y(num_splines * 4 - 2) = std::sin(start_angle);
-    q_x(num_splines * 4 - 1) = std::cos(end_angle);
-    q_y(num_splines * 4 - 1) = std::sin(end_angle);
+    p_x(num_splines * 4 - 2) = std::cos(start_angle);
+    p_y(num_splines * 4 - 2) = std::sin(start_angle);
+    p_x(num_splines * 4 - 1) = std::cos(end_angle);
+    p_y(num_splines * 4 - 1) = std::sin(end_angle);
 
     // Calculate derivatives: x', y', x'y'
-    Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
-    Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
+    Eigen::VectorXd x_dot = A_ex_b * A_inv * p_x;
+    Eigen::VectorXd y_dot = A_ex_b * A_inv * p_y;
     Eigen::VectorXd x_dot_y_dot = -2 * x_dot.array() * y_dot.array();
 
     // Square of derivatives
@@ -630,33 +638,52 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; });
     Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
 
+    // Energy penalty
+    Eigen::MatrixXd T_q = A_ex_bcd * A_inv;
+    Eigen::MatrixXd T_qnx = T_q * N_x;
+    Eigen::MatrixXd T_qny = T_q * N_y;
+
+    Eigen::MatrixXd Q_E = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
+    Eigen::MatrixXd block(3, 3);
+    block << 1, 1, 1,
+             1, 4.0/3.0, 3.0/2.0,
+             1, 3.0/2.0, 9.0/5.0;
+
+    for (int i = 0; i < num_points; ++i) {
+        Q_E.block<3,3>(i * 3, i * 3) = block;
+    }
+    
     // Objective function formulation
     Eigen::MatrixXd P_xx = (curvatures_sq_den.array() * y_dot_sq.array()).matrix().asDiagonal();
     Eigen::MatrixXd P_yy = (curvatures_sq_den.array() * x_dot_sq.array()).matrix().asDiagonal();
     Eigen::MatrixXd P_xy = (curvatures_sq_den.array() * x_dot_y_dot.array()).matrix().asDiagonal();
 
-    Eigen::MatrixXd T_nx = T_c * M_x;
-    Eigen::MatrixXd T_ny = T_c * M_y;
+    Eigen::MatrixXd T_nx = T_c * N_x;
+    Eigen::MatrixXd T_ny = T_c * N_y;
 
     Eigen::MatrixXd H_x = T_nx.transpose() * P_xx * T_nx;
     Eigen::MatrixXd H_xy = T_ny.transpose() * P_xy * T_nx;
     Eigen::MatrixXd H_y = T_ny.transpose() * P_yy * T_ny;
-    Eigen::MatrixXd H = H_x + H_xy + H_y;
+    Eigen::MatrixXd H_E = T_qnx.transpose() * Q_E * T_qnx + T_qny.transpose() * Q_E * T_qny;
+    Eigen::MatrixXd H_k = H_x + H_xy + H_y;
+    Eigen::MatrixXd H = H_k + gamma * H_E;
     H = (H + H.transpose()) * 0.5;
     // double regularization = 1e-6;
     // H += regularization * Eigen::MatrixXd::Identity(H.rows(), H.cols());
 
-    Eigen::VectorXd f_x = 2 * q_x.transpose() * T_c.transpose() * P_xx * T_nx;
-    Eigen::VectorXd f_y = 2 * q_y.transpose() * T_c.transpose() * P_yy * T_ny;
-    Eigen::VectorXd f_xy = q_x.transpose() * T_c.transpose() * P_xy * T_ny + q_y.transpose() * T_c.transpose() * P_xy * T_nx;
-    Eigen::VectorXd f = f_x + f_xy + f_y;
+    Eigen::VectorXd f_x = 2 * p_x.transpose() * T_c.transpose() * P_xx * T_nx;
+    Eigen::VectorXd f_y = 2 * p_y.transpose() * T_c.transpose() * P_yy * T_ny;
+    Eigen::VectorXd f_xy = p_x.transpose() * T_c.transpose() * P_xy * T_ny + p_y.transpose() * T_c.transpose() * P_xy * T_nx;
+    Eigen::VectorXd f_k = f_x + f_xy + f_y;
+    Eigen::VectorXd f_E = 2 * T_qnx.transpose() * Q_E * T_q * p_x + 2 * T_qny.transpose() * Q_E * T_q * p_y;
+    Eigen::VectorXd f = f_k + gamma * f_E;
 
     // Constraint function formulation
-    Eigen::VectorXd Q_x = curvatures_den.array() * y_dot.array();
-    Eigen::VectorXd Q_y = curvatures_den.array() * x_dot.array();
+    Eigen::VectorXd P_x = curvatures_den.array() * y_dot.array();
+    Eigen::VectorXd P_y = curvatures_den.array() * x_dot.array();
 
-    Eigen::MatrixXd E_curvature = Q_y.asDiagonal() * T_ny - Q_x.asDiagonal() * T_nx;
-    Eigen::VectorXd curvature_reference = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
+    Eigen::MatrixXd E_curvature = P_y.asDiagonal() * T_ny - P_x.asDiagonal() * T_nx;
+    Eigen::VectorXd curvature_reference = P_y.asDiagonal() * T_c * p_y - P_x.asDiagonal() * T_c * p_x;
 
     Eigen::VectorXd curv_constraints_ge = Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
     Eigen::VectorXd curv_constraints_le = -Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
@@ -784,27 +811,28 @@ std::vector<Eigen::Vector2d> getPathMinCurvature(const std::vector<Eigen::Vector
 // Utilities
 // ========================================
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle) {
-    int numPoints = path.size();
-    int numSplines = numPoints - 1;
+    int num_points = path.size();
+    int num_splines = num_points - 1;
 
     if (std::isnan(start_angle)) {
         Eigen::Vector2d firstSegment = path[1] - path[0];
         start_angle = std::atan2(firstSegment.y(), firstSegment.x());
     }
     if (std::isnan(end_angle)) {
-        Eigen::Vector2d lastSegment = path[numPoints - 1] - path[numPoints - 2];
+        Eigen::Vector2d lastSegment = path[num_points - 1] - path[num_points - 2];
         end_angle = std::atan2(lastSegment.y(), lastSegment.x());
     }
 
-    // Construct extraction matrices
-    Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
+    // Construct b component extraction matrix
+    Eigen::MatrixXd A_ex_b = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
         A_ex_b(i, i * 4 + 1) = 1;
     }
     A_ex_b.bottomRightCorner(1, 4) << 0, 1, 2, 3;
 
-    Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(numPoints, numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
+    // Construct c component extraction matrix
+    Eigen::MatrixXd A_ex_c = Eigen::MatrixXd::Zero(num_points, num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
         A_ex_c(i, i * 4 + 2) = 2;
     }
     A_ex_c.bottomRightCorner(1, 4) << 0, 0, 2, 6;
@@ -813,21 +841,21 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
     Eigen::MatrixXd T_c = A_ex_c * A_inv;
 
     // Construct reference path matrix
-    Eigen::VectorXd q_x = Eigen::VectorXd::Zero(numSplines * 4);
-    Eigen::VectorXd q_y = Eigen::VectorXd::Zero(numSplines * 4);
-    for (int i = 0; i < numSplines; ++i) {
+    Eigen::VectorXd p_x = Eigen::VectorXd::Zero(num_splines * 4);
+    Eigen::VectorXd p_y = Eigen::VectorXd::Zero(num_splines * 4);
+    for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
-        q_x.segment(j, 2) << path[i].x(), path[i + 1].x();
-        q_y.segment(j, 2) << path[i].y(), path[i + 1].y();
+        p_x.segment(j, 2) << path[i].x(), path[i + 1].x();
+        p_y.segment(j, 2) << path[i].y(), path[i + 1].y();
     }
-    q_x(numSplines * 4 - 2) = std::cos(start_angle);
-    q_y(numSplines * 4 - 2) = std::sin(start_angle);
-    q_x(numSplines * 4 - 1) = std::cos(end_angle);
-    q_y(numSplines * 4 - 1) = std::sin(end_angle);
+    p_x(num_splines * 4 - 2) = std::cos(start_angle);
+    p_y(num_splines * 4 - 2) = std::sin(start_angle);
+    p_x(num_splines * 4 - 1) = std::cos(end_angle);
+    p_y(num_splines * 4 - 1) = std::sin(end_angle);
 
     // Calculate derivatives
-    Eigen::VectorXd x_dot = A_ex_b * A_inv * q_x;
-    Eigen::VectorXd y_dot = A_ex_b * A_inv * q_y;
+    Eigen::VectorXd x_dot = A_ex_b * A_inv * p_x;
+    Eigen::VectorXd y_dot = A_ex_b * A_inv * p_y;
 
     Eigen::VectorXd x_dot_sq = x_dot.array().square();
     Eigen::VectorXd y_dot_sq = y_dot.array().square();
@@ -836,10 +864,10 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
     Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
     Eigen::VectorXd curvatures_den = (1.0 / curv_den.array()).matrix();
 
-    Eigen::VectorXd Q_x = curvatures_den.asDiagonal() * y_dot;
-    Eigen::VectorXd Q_y = curvatures_den.asDiagonal() * x_dot;
+    Eigen::VectorXd P_x = curvatures_den.asDiagonal() * y_dot;
+    Eigen::VectorXd P_y = curvatures_den.asDiagonal() * x_dot;
 
-    Eigen::VectorXd curvature = Q_y.asDiagonal() * T_c * q_y - Q_x.asDiagonal() * T_c * q_x;
+    Eigen::VectorXd curvature = P_y.asDiagonal() * T_c * p_y - P_x.asDiagonal() * T_c * p_x;
 
     return curvature;
 }

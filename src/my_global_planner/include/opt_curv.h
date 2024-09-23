@@ -35,7 +35,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
                                      const std::vector<Eigen::Vector2d>& normal_vectors,
                                      const Eigen::MatrixXd& A,
                                      double curvature_bnd,
-                                     double start_angle, double end_angle);
+                                     double start_angle, double end_angle, double gamma);
 std::vector<Eigen::Vector2d> getPathMinCurvature(const std::vector<Eigen::Vector2d>& path,
                                                  const std::vector<Eigen::Vector2d>& normal_vectors,
                                                  const Eigen::VectorXd& alpha);

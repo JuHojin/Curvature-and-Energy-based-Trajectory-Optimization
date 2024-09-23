@@ -15,6 +15,7 @@ namespace Constant {
     // Minimum curvature optimization
     constexpr double CURVATURE_BOUND = 0.5;
     constexpr unsigned int MAX_OPT_ITER = 10;
+    constexpr double GAMMA = 0.01;
 
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;
