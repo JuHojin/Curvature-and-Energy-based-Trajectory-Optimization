@@ -1,7 +1,7 @@
 <launch>
     <param name="use_sim_time" value="true"/>
 
-    <arg name="map_filename" default="map_four_turn.yaml"/>
+    <arg name="map_filename" default="map_experiment.yaml"/>
     <arg name="map_directory" default="$(find f1tenth-sim)/maps/"/>
     <arg name="full_map_path" value="$(arg map_directory)$(arg map_filename)"/>
         
