@@ -168,6 +168,15 @@ def main():
             #     rospy.loginfo("Ctrl+C pressed. Exiting...")
             #     break
 
+            # Check whether auto control is enabled
+            auto_control_active = rospy.get_param('/auto_control_active', True)
+
+            if not auto_control_active:
+                auto_control.publish_command(0.0, 0.0)
+                auto_control.rate.sleep()
+                continue
+
+
             if not hasattr(auto_control, 'x_list') or not auto_control.x_list:
                 # rospy.loginfo("Waiting for path data...")
                 auto_control.rate.sleep()
