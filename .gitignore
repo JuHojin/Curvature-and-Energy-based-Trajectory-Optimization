@@ -7,4 +7,5 @@ src/cartographer_ros/
 src/.rosinstall
 src/.rosinstall.bak
 src/Assignment/
+src/f1tenth-sim/data/
 .catkin_workspace

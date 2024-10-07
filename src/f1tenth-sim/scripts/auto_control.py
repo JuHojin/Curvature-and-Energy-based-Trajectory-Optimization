@@ -228,8 +228,8 @@ def main():
             # rospy.loginfo("Steering command: %.3f, Speed command: %.3f" %(steer_cmd, speed_cmd))
 
             auto_control.rate.sleep()
-
-    except Exception as e:
+     
+    except rospy.ROSInterruptException as e:
         rospy.logerr('Exception raised: {}'.format(e)) 
 
     finally:

@@ -1,0 +1,10 @@
+<launch>
+    <node pkg="f1tenth-sim" type="set_racecar_state.py" name="set_racecar_state" output="screen">
+        <param name="car_name" value="car_1"/>
+        <!-- <arg name="car_name" default="car_1"/> -->
+    </node>
+
+    <node pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
+        <param name="iterations" value="100"/>
+    </node>
+</launch>

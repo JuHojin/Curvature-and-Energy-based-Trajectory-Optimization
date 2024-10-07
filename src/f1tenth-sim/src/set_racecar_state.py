@@ -5,6 +5,7 @@ from gazebo_msgs.msg import ModelState
 from gazebo_msgs.srv import SetModelState, SetModelStateResponse
 
 car_name = 'car_1'
+GAZEBO_MAP_Y_DIFF = -7
 
 def set_racecar_state(req):
     x = req.model_state.pose.position.x
@@ -14,7 +15,7 @@ def set_racecar_state(req):
     # state_msg.reference_frame = 'map'
     state_msg.model_name = car_name
     state_msg.pose.position.x = x
-    state_msg.pose.position.y = y
+    state_msg.pose.position.y = y + GAZEBO_MAP_Y_DIFF
     state_msg.pose.position.z = 0.001
     state_msg.pose.orientation.x = 0.0
     state_msg.pose.orientation.y = 0.0

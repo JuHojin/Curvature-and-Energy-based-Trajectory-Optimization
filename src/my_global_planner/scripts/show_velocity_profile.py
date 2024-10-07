@@ -130,6 +130,9 @@ def plot_velocity_profile():
             else:
                 plt.ylim(-1, 1)
 
+            if lat_acc:
+                lat_acc = max(lat_acc, max(max_vel) * 1.2)
+
             plt.plot(max_vel, "r-", label="max vel")
             plt.plot(lat_acc, "g-", label="lat acc")
             plt.plot(velocity_profile, "b-", label="result")
