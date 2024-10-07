@@ -181,10 +181,10 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
 
         if (a_star_success) {
-            ROS_INFO("Initial A* planning is successful.");
+            ROS_INFO("A* planning is successful.");
             publishPath(plan_publisher_a_star, a_star_plan_world);
         } else {
-            ROS_WARN("Initial A* planning failed.");
+            ROS_WARN("A* planning failed.");
         }
 
         // Post smoothing

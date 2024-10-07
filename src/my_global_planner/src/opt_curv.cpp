@@ -30,7 +30,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     path = adaptiveSpacing(path);
 
     for (int i = 0; i < max_iter; ++i) {
-        ROS_INFO("Optimization Step [%d]", i + 1);
+        ROS_INFO("Opt. Step [%d]", i + 1);
         if (i != 0) {
             path = adaptiveSpacing(new_path);
         }
@@ -172,7 +172,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Travel time
         double travel_time = getTravelTime(new_path, velocity_profile);
-        ROS_INFO("Optimization Step [%d] Travel Time: %f", i + 1, travel_time);
+        ROS_INFO("\nOpt. Step [%d] Expected Travel Time: %f", i + 1, travel_time);
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
@@ -746,6 +746,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     osqp_set_default_settings(settings);
     settings->rho = 0.1;
     settings->alpha = 1.6;
+    settings->verbose = 0;
 
     // OSQP data
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));

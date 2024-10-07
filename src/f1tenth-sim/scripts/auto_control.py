@@ -13,6 +13,7 @@ from nav_msgs.msg import Path, Odometry
 
 import tf
 from tf.transformations import euler_from_quaternion
+from geometry_msgs.msg import PointStamped
 
 # Normalize angle [-pi, +pi]
 def normalize_angle(angle):
@@ -87,6 +88,8 @@ class AutoController():
 
         self.wpt_look_ahead = 1   # [index]
 
+        self.tf_listener = tf.TransformListener()
+
         # Pub/Sub
         # self.sub_pose    = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.callback_pose)
         self.sub_path    = rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, self.callback_path)
@@ -124,6 +127,27 @@ class AutoController():
         # rospy.loginfo("self.ego_vx: %s", self.ego_vx)
         # Log the local velocities
         # rospy.loginfo("Local linear velocities: vx: {:.3f}, vy: {:.3f}".format(self.ego_vx, self.ego_vy))
+
+    def get_map_coordinates(self, x, y):
+        point_in_odom = PointStamped()
+        point_in_odom.header.frame_id = "odom"
+        point_in_odom.header.stamp = rospy.Time(0)
+        point_in_odom.point.x = x
+        point_in_odom.point.y = y
+        point_in_odom.point.z = 0.0
+
+        try:
+            self.tf_listener.waitForTransform('map', 'odom', rospy.Time(0), rospy.Duration(3.0))
+
+            point_in_map = self.tf_listener.transformPoint('map', point_in_odom)
+
+            transformed_x = point_in_map.point.x
+            transformed_y = point_in_map.point.y
+
+            return transformed_x, transformed_y
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+            rospy.logwarn("Transformation error: %s", e)
+            return x, y
 
     def callback_vel_profile(self, msg):
         self.velocity_profile = msg.data
@@ -163,11 +187,6 @@ def main():
     auto_control = AutoController()
     try:
         while not rospy.is_shutdown():
-            # key = getKey()
-            # if key == '\x03':
-            #     rospy.loginfo("Ctrl+C pressed. Exiting...")
-            #     break
-
             # Check whether auto control is enabled
             auto_control_active = rospy.get_param('/auto_control_active', True)
 
@@ -183,8 +202,7 @@ def main():
                 continue
 
             # Get current state
-            ego_x = auto_control.ego_x - 9.0
-            ego_y = auto_control.ego_y + 2.0
+            ego_x, ego_y = auto_control.get_map_coordinates(auto_control.ego_x, auto_control.ego_y)
             ego_yaw = auto_control.ego_yaw
             ego_vx = auto_control.ego_vx
             wpts_x = auto_control.x_list
