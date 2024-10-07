@@ -5,6 +5,6 @@
     </node>
 
     <node pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
-        <param name="iterations" value="100"/>
+        <param name="path_planner" value="QP"/>
     </node>
 </launch>

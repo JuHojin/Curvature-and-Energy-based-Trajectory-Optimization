@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import rospy
+import pandas as pd
 import csv
 import os
+import argparse
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
@@ -10,6 +12,8 @@ from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
+TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
+CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 
 amcl_position = None
 plan_received = False
@@ -37,7 +41,7 @@ def call_reset_racecar_service(x, y):
 
         response = rest_racecar(request)
         if response.success:
-            rospy.loginfo("Car position successfully reset: ({}, {})".format(x, y))
+            print("Car position reset: x = {}, y = {}".format(x, y))
         else:
             rospy.logerr("Failed to reset car position")
     
@@ -62,7 +66,7 @@ def publish_goal(x, y):
 
     rospy.sleep(1)
     pub.publish(goal_msg)
-    rospy.loginfo("Goal published at: x = {}, y = {}".format(x, y))
+    print("Goal published at: x = {}, y = {}".format(x, y))
 
 def publish_initialpose(x, y):
     pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
@@ -89,7 +93,38 @@ def publish_initialpose(x, y):
 
     rospy.sleep(1)
     pub.publish(pose_msg)
-    rospy.loginfo("Initial pose: x = {}, y = {}".format(x, y))
+    # rospy.loginfo("Initial pose: x = {}, y = {}".format(x, y))
+
+def cancel_move_base_goal():
+    pub = rospy.Publisher('/move_base/cancel', GoalID, queue_size=1)
+    rospy.sleep(1)
+    pub.publish(GoalID())
+    rospy.loginfo("Cancelled previous move_base goal")
+
+def parse_constants_from_h_file(file_path):
+    if not os.path.exists(file_path):
+        rospy.logerr("Constant.h file not found: {}".format(file_path))
+        rospy.signal_shutdown("Required Constant.h file not found")
+        return None
+
+    constants = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            if 'constexpr' in line and '=' in line:
+                left_side, right_side = line.split('=', 1)
+                
+                key = left_side.strip().split(' ')[-1]
+                value = right_side.strip().rstrip(';')
+                try:
+                    if '.' in value or 'e' in value:
+                        value = float(value)
+                    else:
+                        value = int(value)
+                except:
+                    constants[key] = value
+
+                constants[key] = value
+    return constants
 
 def load_start_goal_points(filename):
     if os.path.exists(filename):
@@ -107,31 +142,50 @@ def load_start_goal_points(filename):
         rospy.signal_shutdown("Required start-goal points file not found")
         return None, None
     
-def cancel_move_base_goal():
-    pub = rospy.Publisher('/move_base/cancel', GoalID, queue_size=1)
-    rospy.sleep(1)
-    pub.publish(GoalID())
-    rospy.loginfo("Cancelled previous move_base goal")
-
+def write_travel_time(filename, path_planner, travel_time_list):
+    if os.path.exists(filename) and os.path.getsize(filename) != 0:
+        df = pd.read_csv(filename)
+    else:
+        df = pd.DataFrame()
+    
+    current_column = 'travel_time_' + path_planner
+    df[current_column] = pd.Series(travel_time_list)
+    df.to_csv(filename, index=False)
+    print("Saved travel times of {} to {}".format(path_planner, filename))
 
 def main():
     rospy.init_node('monte_carlo_runner', anonymous=True)
-    
+
+    # Subscribers
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
+    
+    # Initialize
+    constants = parse_constants_from_h_file(CONSTANT_FILE)
+    travel_time_list = []
+    path_planner = rospy.get_param('~path_planner', 'QP')
+    if path_planner == 'QP':
+        gamma = constants.get('GAMMA')
+        if not (gamma == 0 or gamma == 0.0):
+            path_planner += '_E_' + str(gamma)
+            
 
+    # Load start and goal points
     start_points, goal_points = load_start_goal_points(POINTS_FILE)
     if start_points is None or goal_points is None:
         return
 
+    # Monte Carlo Simulation
     for i in range(len(start_points)):
+        print("""================================================\nplanner: {}, idx: {}""".format(path_planner, i))
+
         # Auto-control disable
         rospy.set_param('/auto_control_active', False)
         
         start_x, start_y = start_points[i]
         goal_x, goal_y = goal_points[i]
 
-        rospy.loginfo("start: ({}, {}), goal ({}, {})".format(start_x, start_y, goal_x, goal_y))
+        # Set start point
         call_reset_racecar_service(start_x, start_y)
         rospy.sleep(1)
         publish_initialpose(start_x, start_y)
@@ -149,11 +203,13 @@ def main():
         publish_goal(goal_x, goal_y)
         rospy.sleep(1)
         
+        # Wait for planning to complete
         global plan_received
         while not rospy.is_shutdown():
             print("plan_received = {}".format(plan_received))
             if plan_received:
                 rospy.set_param('/auto_control_active', True)
+                start_time = rospy.Time.now()
                 plan_received = False
                 break
             rate.sleep()
@@ -162,15 +218,21 @@ def main():
         while not rospy.is_shutdown():
             if amcl_position is not None:
                 distance = ((amcl_position.x - goal_x) ** 2 + (amcl_position.y - goal_y) ** 2) ** 0.5
-                if distance < 10:
+                if distance < 3:
                     print(distance)
                 if distance < 0.7:
                     cancel_move_base_goal()
+                    end_time = rospy.Time.now()
+                    travel_time = (end_time - start_time).to_sec()
+                    print("Travel Time: {}".format(travel_time))
+                    travel_time_list.append(travel_time)
                     break
             rate.sleep()
 
-        rospy.loginfo("Racecar arrived at the goal")
+        print("Racecar arrived at the goal\n")
         # rospy.sleep(2)
+
+    write_travel_time(TRAVEL_TIME_FILE, path_planner, travel_time_list)
 
 if __name__ == "__main__":
     try:

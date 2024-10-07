@@ -29,10 +29,10 @@ def set_racecar_state(req):
         resp = set_state(state_msg)
 
         if resp.success:
-            rospy.loginfo("Reset pos. ({}, {})".format(x, y))
+            # rospy.loginfo("Reset pos. ({}, {})".format(x, y))
             return SetModelStateResponse(success=True, status_message="Success")
         else:
-            rospy.logerr("Failed")
+            # rospy.logerr("Failed")
             return SetModelStateResponse(success=False, status_message="Failed")
         
     except rospy.ServiceException as error_msg:
@@ -43,7 +43,7 @@ def racecar_reset_state_service():
     rospy.init_node('racecar_reset_service', anonymous=True)
 
     service = rospy.Service('/reset_racecar_pose', SetModelState, set_racecar_state)
-    rospy.loginfo('Complete resetting the position')
+    # rospy.loginfo('Complete resetting the position')
 
     rospy.spin()
 
