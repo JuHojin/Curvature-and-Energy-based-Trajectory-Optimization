@@ -4,19 +4,22 @@ import rospy
 import pandas as pd
 import csv
 import os
-import argparse
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
+from std_msgs.msg import Float64
 from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
+CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_tim.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 
 amcl_position = None
 plan_received = False
+planning_calculation_time = 0.0
+calculation_time_list = []
 
 def amcl_pose_callback(msg):
     global amcl_position
@@ -26,6 +29,11 @@ def latest_plan_callback(msg):
     global plan_received
     if msg:
         plan_received = True
+
+def planning_calculation_time_callback(msg):
+    global planning_calculation_time
+    planning_calculation_time = msg.data
+    calculation_time_list.append(planning_calculation_time)
 
 def call_reset_racecar_service(x, y):
     rospy.wait_for_service('/reset_racecar_pose')
@@ -142,14 +150,13 @@ def load_start_goal_points(filename):
         rospy.signal_shutdown("Required start-goal points file not found")
         return None, None
     
-def write_travel_time(filename, path_planner, travel_time_list):
+def save_data_to_csv(filename, path_planner, data_list):
     if os.path.exists(filename) and os.path.getsize(filename) != 0:
         df = pd.read_csv(filename)
     else:
         df = pd.DataFrame()
     
-    current_column = 'travel_time_' + path_planner
-    df[current_column] = pd.Series(travel_time_list)
+    df[path_planner] = pd.Series(data_list)
     df.to_csv(filename, index=False)
     print("Saved travel times of {} to {}".format(path_planner, filename))
 
@@ -159,7 +166,8 @@ def main():
     # Subscribers
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
-    
+    rospy.Subscriber('/move_base/MyGlobalPlanner/planning_calculation_time', Float64, planning_calculation_time_callback, queue_size=1)
+
     # Initialize
     constants = parse_constants_from_h_file(CONSTANT_FILE)
     travel_time_list = []
@@ -168,8 +176,7 @@ def main():
         gamma = constants.get('GAMMA')
         if not (gamma == 0 or gamma == 0.0):
             path_planner += '_E_' + str(gamma)
-            
-
+    
     # Load start and goal points
     start_points, goal_points = load_start_goal_points(POINTS_FILE)
     if start_points is None or goal_points is None:
@@ -224,15 +231,18 @@ def main():
                     cancel_move_base_goal()
                     end_time = rospy.Time.now()
                     travel_time = (end_time - start_time).to_sec()
-                    print("Travel Time: {}".format(travel_time))
                     travel_time_list.append(travel_time)
+                    print("Travel Time: {}".format(travel_time))
+                    print("Calculation TIme: {}".format(calculation_time_list[i]))
                     break
             rate.sleep()
 
         print("Racecar arrived at the goal\n")
         # rospy.sleep(2)
 
-    write_travel_time(TRAVEL_TIME_FILE, path_planner, travel_time_list)
+    save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
+    save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
+
 
 if __name__ == "__main__":
     try:

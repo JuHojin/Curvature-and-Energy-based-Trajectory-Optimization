@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numeric>
 #include <std_msgs/Float64MultiArray.h>
+#include <std_msgs/Float64.h>
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -61,6 +62,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     constraints_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("velocity_constraints", 10);
     pin_points_publisher = private_nh.advertise<my_global_planner::PinPoints>("pin_points", 10);
     replan_status_publisher = private_nh.advertise<std_msgs::Bool>("replan_status", 10);
+    planning_calculation_time_publisher = private_nh.advertise<std_msgs::Float64>("planning_calculation_time", 1);
 
     ros::NodeHandle nh;
     // Subscriber
@@ -146,6 +148,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         goal_ = goal;
         plan.clear();
 
+        // Measure planning calculation time: start
+        ros::Time start_time = ros::Time::now();
+
         // Convert start and goal point: (Real) World -> Map
         unsigned int start_x, start_y, goal_x, goal_y;
         bool valid_start = convertWorldToMap(start.pose.position.x, start.pose.position.y, start_x, start_y);
@@ -230,12 +235,18 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         // for (int i = 0; i < curvature.size(); ++i) {
         //     std::cout << "Curvature[" << i << "]: " << curvature[i] << std::endl;
         // }
-
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
+
+        // Measure planning calculation time: end
+        ros::Time end_time = ros::Time::now();
+        double planning_calculation_time = (end_time - start_time).toSec();
+        std_msgs::Float64 planning_calculation_time_msg;
+        planning_calculation_time_msg.data = planning_calculation_time;
+        planning_calculation_time_publisher.publish(planning_calculation_time_msg);
 
         latest_plan_global = final_plan;
         plan = final_plan_world.poses;

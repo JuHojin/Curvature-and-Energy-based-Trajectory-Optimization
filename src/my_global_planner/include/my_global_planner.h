@@ -93,7 +93,8 @@ private:
     ros::Publisher pin_points_publisher;
     ros::Publisher pin_point_indices_publisher;
     ros::Publisher replan_status_publisher;
-
+    ros::Publisher planning_calculation_time_publisher;
+    
     ros::Subscriber replanning_trigger_sub;
     ros::Subscriber replanning_indices_sub;
     ros::Subscriber local_costmap_sub;
