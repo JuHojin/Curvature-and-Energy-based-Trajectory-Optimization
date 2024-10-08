@@ -13,8 +13,9 @@ from actionlib_msgs.msg import GoalID
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
-CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_tim.csv')
+CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
+EPSILON = 0.1
 
 amcl_position = None
 plan_received = False
@@ -177,6 +178,16 @@ def main():
         if not (gamma == 0 or gamma == 0.0):
             path_planner += '_E_' + str(gamma)
     
+    # Set path planner parameter for global planner
+    if path_planner.startswith('B_spline'):
+        planner_type = 1
+    elif path_planner.startswith('QP'):
+        planner_type = 2
+    else:
+        planner_type = 0
+    rospy.set_param('/move_base/planner_type', planner_type)
+    rospy.loginfo("Set ROS parameter /planner_type to: {}".format(planner_type))
+
     # Load start and goal points
     start_points, goal_points = load_start_goal_points(POINTS_FILE)
     if start_points is None or goal_points is None:
@@ -202,7 +213,7 @@ def main():
         while not rospy.is_shutdown():
             if amcl_position is not None:
                 distance = ((amcl_position.x - start_x) ** 2 + (amcl_position.y - start_y) ** 2) ** 0.5
-                if distance < 0.1:
+                if distance < EPSILON:
                     break
             rate.sleep()
 
@@ -225,7 +236,7 @@ def main():
         while not rospy.is_shutdown():
             if amcl_position is not None:
                 distance = ((amcl_position.x - goal_x) ** 2 + (amcl_position.y - goal_y) ** 2) ** 0.5
-                if distance < 3:
+                if distance < 1:
                     print(distance)
                 if distance < 0.7:
                     cancel_move_base_goal()

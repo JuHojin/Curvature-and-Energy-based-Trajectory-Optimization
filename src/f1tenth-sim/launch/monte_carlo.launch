@@ -1,10 +1,15 @@
 <launch>
+    <!-- path_planner: Default, B_spline, QP (Default: A*)-->
+    <arg name="path_planner" default="B_spline"/>
+
     <node pkg="f1tenth-sim" type="set_racecar_state.py" name="set_racecar_state" output="screen">
         <param name="car_name" value="car_1"/>
-        <!-- <arg name="car_name" default="car_1"/> -->
     </node>
 
     <node pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
-        <param name="path_planner" value="QP"/>
+        <param name="path_planner" value="$(arg path_planner)"/>
     </node>
+
+    <!-- Run the bspline node only if path_planner is set to B_spline -->
+    <node if="$(eval arg('path_planner') == 'B_spline')" pkg="my_global_planner" type="bspline.py" name="bspline_node" output="screen"/>
 </launch>
