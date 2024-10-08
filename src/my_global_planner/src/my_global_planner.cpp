@@ -64,6 +64,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     pin_points_publisher = private_nh.advertise<my_global_planner::PinPoints>("pin_points", 10);
     replan_status_publisher = private_nh.advertise<std_msgs::Bool>("replan_status", 10);
     planning_calculation_time_publisher = private_nh.advertise<std_msgs::Float64>("planning_calculation_time", 1);
+    curvature_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature", 1);
 
     // Subscriber
     ros::NodeHandle nh;
@@ -264,16 +265,21 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             latest_plan_global = final_plan;
         }
 
-        // Calculate velocity Profile
+        // Calculate curvature of final plan
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
-        // for (int i = 0; i < curvature.size(); ++i) {
-        //     std::cout << "Curvature[" << i << "]: " << curvature[i] << std::endl;
-        // }
+        std_msgs::Float64MultiArray curvature_msg;
+        for (int i = 0; i < curvature.size(); ++i) {
+           curvature_msg.data.push_back(curvature[i]);
+        }
+        curvature_publisher.publish(curvature_msg);
+
+        // Calculate velocity Profile
         auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
+
         // Measure planning calculation time: end
         ros::Time end_time = ros::Time::now();
         double planning_calculation_time = (end_time - start_time).toSec();
