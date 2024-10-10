@@ -8,9 +8,10 @@ namespace Constant {
     constexpr unsigned int DEV_DOT = 1;
 
     // Spacing
-    constexpr unsigned int UNIFORM_STEP = 5;
-    constexpr unsigned int ADAPTIVE_MIN_STEP = 5;
-    constexpr unsigned int ADAPTIVE_MAX_STEP = 10;
+    constexpr double UNIFORM_STEP = 5;
+    constexpr double ADAPTIVE_MIN_STEP = 5;
+    constexpr double ADAPTIVE_MAX_STEP = 10;
+    constexpr double LAST_UNIFORM_STEP = 3;
 
     // Minimum curvature optimization
     constexpr double CURVATURE_BOUND = 0.2;
@@ -20,7 +21,7 @@ namespace Constant {
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;
     constexpr double MAX_AX = 0.03;
-    constexpr double MAX_AY = 1;
+    constexpr double MAX_AY = 2;
     constexpr double INIT_VELOCITY = 0;
 
     // Pin point

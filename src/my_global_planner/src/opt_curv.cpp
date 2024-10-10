@@ -23,17 +23,13 @@ ros::Publisher plan_publisher_opt;
 // ========================================
 std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer) {
     
-    std::vector<Eigen::Vector2d> new_path;
+    std::vector<Eigen::Vector2d> new_path = path;
     Eigen::VectorXd alpha;
     std::vector<double> travel_times;
 
-    path = adaptiveSpacing(path);
-
     for (int i = 0; i < max_iter; ++i) {
-        ROS_INFO("Opt. Step [%d]", i + 1);
-        if (i != 0) {
-            path = adaptiveSpacing(new_path);
-        }
+        ROS_INFO("\n============ Opt. Step [%d] ============", i + 1);
+        path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
 
         Eigen::MatrixXd A = getSystemMatrix(path);
         std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
@@ -160,29 +156,32 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
             publishPath(plan_publisher_opt, new_path_world);
         } else {
-            ROS_WARN("Optimization Failed at step [%d]", i + 1);
-            new_path = adaptiveSpacing(path);
+            ROS_INFO("Optimization Failed at step [%d]", i + 1);
             break;
         }
 
+        // TODO: uniform apply or not apply
+
         // Get curvature and velocity profile
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(new_path);
-        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        std::vector<Eigen::Vector2d> new_path_uniform = uniformSpacing(new_path, Constant::UNIFORM_STEP);
+        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(new_path_uniform);
+        auto velocity_result = getVelocityProfile(curvature, Constant::UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
 
         // Travel time
-        double travel_time = getTravelTime(new_path, velocity_profile);
+        double travel_time = getTravelTime(new_path_uniform, velocity_profile);
         ROS_INFO("\nOpt. Step [%d] Expected Travel Time: %f", i + 1, travel_time);
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
         if (i >= 2 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
             ROS_INFO("Current travel time is longer than the previous one or is NaN. Reverting to path at step [%d]", i);
-            new_path = adaptiveSpacing(path); // Revert to the previous path
+            new_path = path; // Revert to the previous path
             break;
         }
     }
 
+    // the return path is adaptive spaced path
     return new_path;
 }
 

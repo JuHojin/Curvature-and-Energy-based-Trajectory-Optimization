@@ -198,71 +198,75 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
         nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
         publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
-
-        // Uniform path Spacing
-        std::vector<geometry_msgs::PoseStamped> uniform_plan = uniformSpacing(post_smooth_plan);
-        nav_msgs::Path uniform_plan_world = producePathMapToWorld(uniform_plan);
-        publishPath(plan_publisher_uniform, uniform_plan_world);
-        
-
+      
         nav_msgs::Path final_plan_world;
+        std::vector<geometry_msgs::PoseStamped> uniform_plan;
+        nav_msgs::Path uniform_plan_world;
         if (planner_type == 0) {
-            // A* only
-            final_plan_world = uniform_plan_world;
+            // A* only (Uniform Spacing)
+            uniform_plan = uniformSpacing(post_smooth_plan, Constant::LAST_UNIFORM_STEP);
+            final_plan_world = producePathMapToWorld(uniform_plan);
             publishPath(plan_publisher_latest, final_plan_world);
-        } else if (planner_type == 1) {
-            // B-spline
-            ros::NodeHandle nh;
-            ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
-            my_global_planner::BSplineSmoothing srv;
-            srv.request.input_plan = uniform_plan_world;
+        } else {
+            // Uniform Spacing
+            uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+            uniform_plan_world = producePathMapToWorld(uniform_plan);
+            publishPath(plan_publisher_uniform, uniform_plan_world);
 
-            if (!client.call(srv)) {
-                ROS_ERROR("Failed to call B-spline smoothing service.");
-                return false;
+            if (planner_type == 1) {
+                // B-spline
+                ros::NodeHandle nh;
+                ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
+                my_global_planner::BSplineSmoothing srv;
+                srv.request.input_plan = uniform_plan_world;
+
+                if (!client.call(srv)) {
+                    ROS_ERROR("Failed to call B-spline smoothing service.");
+                    return false;
+                }
+
+                if (srv.response.output_plan.poses.empty()) {
+                    ROS_ERROR("Received an empty B-spline path from the service.");
+                    return false;
+                }
+
+                final_plan_world = srv.response.output_plan;
+
+                ROS_INFO("Successfully received B-spline path from the service.");
+                publishPath(plan_publisher_latest, final_plan_world);
             }
+            else if (planner_type == 2) {
+                // QP optimization
+                // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
+                std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
+                std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false, tf_buffer_);
 
-            if (srv.response.output_plan.poses.empty()) {
-                ROS_ERROR("Received an empty B-spline path from the service.");
-                return false;
+                // Pin point selection (based on opt_path)
+                auto pin_point_result = pin_point_select(opt_path);
+                std::vector<int> opt_pin_point_indices = pin_point_result.first;
+                geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
+
+                // Final plan - make opt_path uniform
+                std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+                std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan, Constant::LAST_UNIFORM_STEP);
+                final_plan_world = producePathMapToWorld(final_plan);
+                publishPath(plan_publisher_initial, final_plan_world);
+                publishPath(plan_publisher_latest, final_plan_world);
+                // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
+                //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
+                //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
+                // }
+
+                // Update pin points (based on final_plan)
+                auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
+                my_global_planner::PinPoints pin_points_msg;
+                pin_points_msg.pose_array = updated_pin_points.first;
+                pin_points_msg.index_array.data.clear();
+                pin_points_msg.index_array.data.insert(pin_points_msg.index_array.data.end(), updated_pin_points.second.begin(), updated_pin_points.second.end());
+                pin_points_publisher.publish(pin_points_msg);
+
+                latest_plan_global = final_plan;
             }
-
-            final_plan_world = srv.response.output_plan;
-
-            ROS_INFO("Successfully received B-spline path from the service.");
-            publishPath(plan_publisher_latest, final_plan_world);
-        }
-        else if (planner_type == 2) {
-            // QP optimization
-            // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
-            std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
-            std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false, tf_buffer_);
-
-            // Pin point selection (based on opt_path)
-            auto pin_point_result = pin_point_select(opt_path);
-            std::vector<int> opt_pin_point_indices = pin_point_result.first;
-            geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
-
-            // Final plan - make opt_path uniform
-            std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-            std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan);
-            final_plan_world = producePathMapToWorld(final_plan);
-            publishPath(plan_publisher_initial, final_plan_world);
-            publishPath(plan_publisher_latest, final_plan_world);
-            // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
-            //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
-            //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
-            // }
-
-            // Update pin points (based on final_plan)
-            auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
-            my_global_planner::PinPoints pin_points_msg;
-            pin_points_msg.pose_array = updated_pin_points.first;
-            pin_points_msg.index_array.data.clear();
-            pin_points_msg.index_array.data.insert(pin_points_msg.index_array.data.end(), updated_pin_points.second.begin(), updated_pin_points.second.end());
-            pin_points_publisher.publish(pin_points_msg);
-
-            latest_plan_global = final_plan;
         }
 
         // Calculate curvature of final plan
@@ -274,7 +278,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         curvature_publisher.publish(curvature_msg);
 
         // Calculate velocity Profile
-        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        auto velocity_result = getVelocityProfile(curvature, Constant::LAST_UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
@@ -336,7 +340,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             plan_replan2_global_map.push_back(latest_plan_global[pin_point_idx]);
             path_replan2_global_map = convertPoseStampedToVector2d(plan_replan2_global_map);
         }
-        // path_replan2_global_map = uniformSpacing(path_replan2_global_map);
+        // path_replan2_global_map = uniformSpacing(path_replan2_global_map, Constant::UNIFORM_STEP);
 
         // 2.3 latest_plan_global[pin_point_idx + 1] ~ latest_plan_global[end_point_idx]
         if (pin_point_idx < end_point_idx && end_point_idx < latest_plan_global.size()) {
@@ -352,7 +356,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         if (pin_point_idx < end_point_idx) {
             path_replan_global_map.insert(path_replan_global_map.end(), path_replan3_global_map.begin(), path_replan3_global_map.end());
         }
-        path_replan_global_map = uniformSpacing(path_replan_global_map);
+        path_replan_global_map = uniformSpacing(path_replan_global_map, Constant::UNIFORM_STEP);
         
         // 2.5. Optimizatoin
         float resolution = local_costmap_msg->info.resolution;
@@ -429,6 +433,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         latest_plan_global.insert(latest_plan_global.end(), plan_opt_replan.begin(), plan_opt_replan.end());
         latest_plan_global.insert(latest_plan_global.end(), plan_final.begin(), plan_final.end());
         updateOrientation(latest_plan_global);
+        // TODO: unifrom spacing last uniform
 
         replanned_path_world = producePathMapToWorld(latest_plan_global);
         // for (size_t i = 0; i < latest_plan_global.size(); ++i) {
@@ -438,7 +443,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Calculate velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(replanned_path_world);
-        auto velocity_result = getVelocityProfile(curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        auto velocity_result = getVelocityProfile(curvature, Constant::LAST_UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);

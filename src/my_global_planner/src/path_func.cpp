@@ -64,7 +64,7 @@ std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::P
 // ========================================
 // Path Spacing
 // ========================================
-std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometry_msgs::PoseStamped>& plan) {
+std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometry_msgs::PoseStamped>& plan, double step_size) {
     if (plan.empty()) {
         ROS_WARN("Uniform spacing failed: Path is empty.");
         return plan;
@@ -78,12 +78,12 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
         geometry_msgs::PoseStamped current = new_plan.back();
         const geometry_msgs::PoseStamped& next = plan[i];
         double dist = std::hypot(next.pose.position.x - current.pose.position.x, next.pose.position.y - current.pose.position.y);
-        // if (dist < Constant::UNIFORM_STEP) {
+        // if (dist < step_size) {
         //     ++i;
         //     continue;
         // }
 
-        while (dist > Constant::UNIFORM_STEP) {
+        while (dist > step_size) {
             double dx = next.pose.position.x - current.pose.position.x;
             double dy = next.pose.position.y - current.pose.position.y;
             double length = std::hypot(dx, dy);
@@ -92,8 +92,8 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
             dx /= length;
             dy /= length;
 
-            current.pose.position.x += dx * Constant::UNIFORM_STEP;
-            current.pose.position.y += dy * Constant::UNIFORM_STEP;
+            current.pose.position.x += dx * step_size;
+            current.pose.position.y += dy * step_size;
 
             new_plan.push_back(current);
             // ROS_INFO("current (%f, %f)", current.pose.position.x, current.pose.position.y);
@@ -112,7 +112,7 @@ std::vector<geometry_msgs::PoseStamped> uniformSpacing(const std::vector<geometr
     return new_plan;
 }
 
-std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& path) {
+std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& path, double step_size) {
     if (path.empty()) {
         std::cerr << "Uniform spacing failed: Path is empty." << std::endl;
         return path;
@@ -127,14 +127,14 @@ std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& 
         const Eigen::Vector2d& next = path[i];
         double dist = (next - current).norm();
 
-        // if (dist < Constant::UNIFORM_STEP) {
+        // if (dist < step_size) {
         //     ++i;
         //     continue;
         // }
 
-        while (dist > Constant::UNIFORM_STEP) {
+        while (dist > step_size) {
             Eigen::Vector2d direction = (next - current).normalized();
-            current += direction * Constant::UNIFORM_STEP;
+            current += direction * step_size;
 
             new_path.push_back(current);
             
@@ -148,7 +148,7 @@ std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& 
     return new_path;
 }
 
-std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path) {
+std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path, double min_step_size, double max_step_size) {
     std::vector<Eigen::Vector2d> new_path;
     new_path.push_back(path[0]);
 
@@ -157,18 +157,18 @@ std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>&
         Eigen::Vector2d end = path[i];
         double dist = (end - start).norm();
 
-        double min_obstacle_distance = get_min_obstacle_distance(start, Constant::ADAPTIVE_MAX_STEP);
+        double min_obstacle_distance = get_min_obstacle_distance(start, max_step_size);
 
         // Determine sampling spacing
         double new_spacing;
-        if (min_obstacle_distance != -1 && min_obstacle_distance < Constant::ADAPTIVE_MAX_STEP) {
-            if (min_obstacle_distance < Constant::ADAPTIVE_MIN_STEP) {
-                new_spacing = Constant::ADAPTIVE_MIN_STEP;
+        if (min_obstacle_distance != -1 && min_obstacle_distance < max_step_size) {
+            if (min_obstacle_distance < min_step_size) {
+                new_spacing = min_step_size;
             } else {
                 new_spacing = min_obstacle_distance;
             }
         } else {
-            new_spacing = Constant::ADAPTIVE_MAX_STEP;
+            new_spacing = max_step_size;
         }
 
         // std::cout << "Min obstacle distance: " << min_obstacle_distance << ", New spacing: " << new_spacing << std::endl;
@@ -289,7 +289,7 @@ double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_r
 // ========================================
 // Velocity Profile
 // ========================================
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double step_size, double init_velocity, double max_vel, double max_ax, double max_ay) {
 
     size_t len_path = curvature.size();
 
@@ -303,7 +303,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
         if (k < 1e-7) {
             k = 1e-7;
         }
-        double v = std::sqrt(max_ay / k);
+        double v = std::sqrt(max_ay / std::abs(k));
         // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
         v = std::min(v, max_vel + 1);
         lat_acc(i) = v;
@@ -320,7 +320,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     double v = init_velocity;  // Initial velocity
     velocity_profile(0) = v;
     for (size_t i = 1; i < len_path; ++i) {
-        double next_v = std::sqrt(v * v + 2 * max_ax * Constant::UNIFORM_STEP);
+        double next_v = std::sqrt(v * v + 2 * max_ax * step_size);
         if (next_v < velocity_profile(i)) {
             velocity_profile(i) = next_v;
             v = next_v;
@@ -333,7 +333,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     v = 0;  // Final velocity
     velocity_profile(len_path - 1) = v;
     for (int i = len_path - 2; i >= 0; --i) {
-        double next_v = std::sqrt(v * v + 2 * max_ax * Constant::UNIFORM_STEP);
+        double next_v = std::sqrt(v * v + 2 * max_ax * step_size);
         if (next_v < velocity_profile(i)) {
             velocity_profile(i) = next_v;
             v = next_v;
@@ -411,7 +411,7 @@ Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg
 
         Eigen::Vector2d acceleration = d2 - d1;
 
-        double numerator = std::abs(velocity.x() * acceleration.y() - velocity.y() * acceleration.x());
+        double numerator = velocity.x() * acceleration.y() - velocity.y() * acceleration.x();
         double denominator = std::pow(velocity.squaredNorm(), 1.5);
 
         if (denominator != 0.0) {
