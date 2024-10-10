@@ -1,4 +1,9 @@
 <launch>
+    <!-- Planner Type: A*: 0, Bspline: 1, QP: 2 -->
+    <rosparam param="move_base/planner_type"> 2 </rosparam>
+    <!-- QP type: uniform: 0, adaptive: 1 -->
+    <rosparam param="move_base/QP_type"> 1 </rosparam>
+
     <!-- Move Base -->
     <node name="move_base" pkg="move_base" type="move_base" respawn="false" output="screen">
         <rosparam file="$(find f1tenth-sim)/config/costmap_common_params.yaml" command="load" ns="global_costmap"/>

@@ -1,6 +1,9 @@
 <launch>
     <!-- path_planner: Default, B_spline, QP (Default: A*)-->
     <arg name="path_planner" default="B_spline"/>
+    
+    <!-- QP type: uniform: 0, adaptive: 1 -->
+    <rosparam param="move_base/QP_type"> 1 </rosparam>
 
     <node pkg="f1tenth-sim" type="set_racecar_state.py" name="set_racecar_state" output="screen">
         <param name="car_name" value="car_1"/>

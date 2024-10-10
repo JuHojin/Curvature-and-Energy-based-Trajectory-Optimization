@@ -26,10 +26,22 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     std::vector<Eigen::Vector2d> new_path = path;
     Eigen::VectorXd alpha;
     std::vector<double> travel_times;
+    int qp_type;
+    ros::NodeHandle nh("/");
+    nh.param("move_base/QP_type", qp_type, 1);
 
     for (int i = 0; i < max_iter; ++i) {
         ROS_INFO("\n============ Opt. Step [%d] ============", i + 1);
-        path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+        if (qp_type == 0) {
+            ROS_INFO("Using uniformSpacing for optimization step %d", i + 1);
+            path = uniformSpacing(new_path, Constant::UNIFORM_STEP);
+        } else if (qp_type == 1) {
+            ROS_INFO("Using adaptiveSpacing for optimization step %d", i + 1);
+            path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+        } else {
+            ROS_WARN("Invalid QP_type value: %d. Defaulting to adaptiveSpacing.", qp_type);
+            path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+        }
 
         Eigen::MatrixXd A = getSystemMatrix(path);
         std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
