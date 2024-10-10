@@ -34,6 +34,7 @@ extern ros::Publisher plan_publisher_bnd_R;
 extern ros::Publisher plan_publisher_bnd_L_replan;
 extern ros::Publisher plan_publisher_bnd_R_replan;
 extern ros::Publisher plan_publisher_opt;
+extern ros::Publisher optimization_status_publisher;
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
 void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile);
@@ -95,7 +96,7 @@ private:
     ros::Publisher replan_status_publisher;
     ros::Publisher planning_calculation_time_publisher;
     ros::Publisher curvature_publisher;
-
+    
     ros::Subscriber replanning_trigger_sub;
     ros::Subscriber replanning_indices_sub;
     ros::Subscriber local_costmap_sub;

@@ -41,7 +41,6 @@ MyGlobalPlanner::~MyGlobalPlanner() {}
 void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros) {
     costmap = costmap_ros->getCostmap();
     
-
     replanning_mode = false;
     
     ros::NodeHandle private_nh("~/" + name);
@@ -65,6 +64,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     replan_status_publisher = private_nh.advertise<std_msgs::Bool>("replan_status", 10);
     planning_calculation_time_publisher = private_nh.advertise<std_msgs::Float64>("planning_calculation_time", 1);
     curvature_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature", 1);
+    optimization_status_publisher = private_nh.advertise<std_msgs::Bool>("optimization_status", 1);
 
     // Subscriber
     ros::NodeHandle nh;

@@ -7,12 +7,13 @@ import os
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Bool
 from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
+OPT_SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/opt_success.csv')
 CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 EPSILON = 0.1
@@ -20,7 +21,9 @@ EPSILON = 0.1
 amcl_position = None
 plan_received = False
 planning_calculation_time = 0.0
+optimization_success = False
 calculation_time_list = []
+optimization_success_list = []
 
 def amcl_pose_callback(msg):
     global amcl_position
@@ -35,6 +38,10 @@ def planning_calculation_time_callback(msg):
     global planning_calculation_time
     planning_calculation_time = msg.data
     calculation_time_list.append(planning_calculation_time)
+
+def optimization_status_callback(msg):
+    global optimization_success
+    optimization_success = msg.data
 
 def call_reset_racecar_service(x, y):
     rospy.wait_for_service('/reset_racecar_pose')
@@ -164,10 +171,6 @@ def save_data_to_csv(filename, path_planner, data_list):
 def main():
     rospy.init_node('monte_carlo_runner', anonymous=True)
 
-    # Subscribers
-    rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
-    rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
-    rospy.Subscriber('/move_base/MyGlobalPlanner/planning_calculation_time', Float64, planning_calculation_time_callback, queue_size=1)
 
     # Initialize
     constants = parse_constants_from_h_file(CONSTANT_FILE)
@@ -178,6 +181,13 @@ def main():
         if not (gamma == 0 or gamma == 0.0):
             path_planner += '_E_' + str(gamma)
     
+    # Subscribers
+    rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
+    rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
+    rospy.Subscriber('/move_base/MyGlobalPlanner/planning_calculation_time', Float64, planning_calculation_time_callback, queue_size=1)
+    if path_planner.startswith('QP'):
+        rospy.Subscriber('/move_base/MyGlobalPlanner/optimization_status', Bool, optimization_status_callback, queue_size=1)
+
     # Set path planner parameter for global planner
     if path_planner.startswith('B_spline'):
         planner_type = 1
@@ -244,7 +254,12 @@ def main():
                     travel_time = (end_time - start_time).to_sec()
                     travel_time_list.append(travel_time)
                     print("Travel Time: {}".format(travel_time))
-                    print("Calculation TIme: {}".format(calculation_time_list[i]))
+
+                    print("Calculation Time: {}".format(calculation_time_list[i]))
+
+                    if path_planner.startswith('QP'):
+                        optimization_success_list.append(optimization_success)
+                        print("Optimization Success: {}".format(optimization_success))
                     break
             rate.sleep()
 
@@ -253,7 +268,8 @@ def main():
 
     save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
     save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
-
+    if path_planner.startswith('QP'):
+        save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
 
 if __name__ == "__main__":
     try:

@@ -4,6 +4,7 @@
 #include <limits>
 #include <tf/tf.h>
 #include <numeric>
+#include <std_msgs/Bool.h>
 #include "my_global_planner.h"
 #include "opt_curv.h"
 #include "path_func.h"
@@ -11,12 +12,13 @@
 
 namespace my_global_planner {
 
-// Publishers for plot plans in Rviz
+// Publishers
 ros::Publisher plan_publisher_bnd_L;
 ros::Publisher plan_publisher_bnd_R;
 ros::Publisher plan_publisher_bnd_L_replan;
 ros::Publisher plan_publisher_bnd_R_replan;
 ros::Publisher plan_publisher_opt;
+ros::Publisher optimization_status_publisher;
 
 // ========================================
 // Main
@@ -26,6 +28,8 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     std::vector<Eigen::Vector2d> new_path = path;
     Eigen::VectorXd alpha;
     std::vector<double> travel_times;
+    bool success_flag;
+
     int qp_type;
     ros::NodeHandle nh("/");
     nh.param("move_base/QP_type", qp_type, 1);
@@ -167,8 +171,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             std::vector<geometry_msgs::PoseStamped> new_path_tmp = convertVector2dToPoseStamped(new_path);
             nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
             publishPath(plan_publisher_opt, new_path_world);
+            
         } else {
             ROS_INFO("Optimization Failed at step [%d]", i + 1);
+            success_flag = false;
             break;
         }
 
@@ -189,9 +195,14 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         if (i >= 2 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
             ROS_INFO("Current travel time is longer than the previous one or is NaN. Reverting to path at step [%d]", i);
             new_path = path; // Revert to the previous path
+            success_flag = true;
             break;
         }
     }
+
+    std_msgs::Bool status_msg;
+    status_msg.data = success_flag;
+    optimization_status_publisher.publish(status_msg);
 
     // the return path is adaptive spaced path
     return new_path;
