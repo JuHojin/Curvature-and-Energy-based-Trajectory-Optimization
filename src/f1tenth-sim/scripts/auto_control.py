@@ -15,7 +15,8 @@ import tf
 from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PointStamped
 
-# Normalize angle [-pi, +pi]
+WHEEL_BASE = 0.325
+
 def normalize_angle(angle):
     if angle > math.pi:
         norm_angle = angle - 2*math.pi
@@ -25,7 +26,6 @@ def normalize_angle(angle):
         norm_angle = angle
     return norm_angle
 
-# Find nearest point
 def find_nearest_point(ego_x, ego_y, x_list, y_list):
     x_arr = np.array(x_list)
     y_arr = np.array(y_list)
@@ -37,20 +37,17 @@ def find_nearest_point(ego_x, ego_y, x_list, y_list):
 
     return near_idx, near_dist
 
-# Calculate Error
 def calc_error(ego_x, ego_y, ego_yaw, x_list, y_list, lookahead):
-    # 2. Find the nearest waypoint
     near_idx, _ = find_nearest_point(ego_x, ego_y, x_list, y_list)
     # rospy.loginfo("current near_idx: %s", near_idx)
 
-    # 3. Set lookahead waypoint (index increment of waypoint trajectory)
     look_ahead_idx = max(min(near_idx + lookahead, len(x_list) - 1), 0)
     # rospy.loginfo("current look_ahead_idx: %s", look_ahead_idx)
 
     lookahead_point_x = x_list[look_ahead_idx]
     lookahead_point_y = y_list[look_ahead_idx]
 
-    # 4. Calculate errors
+    # Calculate errors
     if look_ahead_idx < len(x_list) - 1:
         error_yaw = math.atan2(y_list[look_ahead_idx + 1] - lookahead_point_y,
                                x_list[look_ahead_idx + 1] - lookahead_point_x) - ego_yaw
@@ -65,7 +62,27 @@ def calc_error(ego_x, ego_y, ego_yaw, x_list, y_list, lookahead):
     error_y = math.sqrt((x_list[look_ahead_idx] - ego_x) ** 2 + 
                         (y_list[look_ahead_idx] - ego_y) ** 2) * math.sin(gamma)
 
-    return error_y, error_yaw, near_idx
+    return error_y, error_yaw, near_idx, look_ahead_idx
+
+def precompute_gain_tables(v_min, v_max, num_points):
+    v_values = np.linspace(v_min, v_max, num_points)
+    K_values = {}
+
+    L = WHEEL_BASE
+    Q = np.array([[300, 0],
+                  [0, 100]])
+    R = np.array([[2600]])
+
+    for v in v_values:
+        A = np.array([[0, v],
+                      [0, 0]])
+        B = np.array([[0],
+                      [v / L]])
+        P = solve_continuous_are(A, B, Q, R)
+        K = -np.dot(np.dot(np.linalg.inv(R), B.T), P)
+        K_values[v] = K
+
+    return K_values
 
 class AutoController():
     def __init__(self):
@@ -73,29 +90,32 @@ class AutoController():
         rospy.init_node('auto_control', anonymous = True)
         self.rate = rospy.Rate(100.0)
 
-        # Params
-        self.target_speed = 10/3.6 # 10km/h
+        # Parameters
+        self.target_speed = 10 / 3.6 # 10km/h
         self.MAX_STEER    = np.deg2rad(17.75)
+        self.wheel_base = WHEEL_BASE
 
-        # vehicle state
+        # Vehicle state
         self.ego_x   = 0
         self.ego_y   = 0
         self.ego_yaw = 0
         self.ego_vx  = 0
         self.velocity_profile = []
 
-        self.wheelbase = 0.3
 
         self.wpt_look_ahead = 1   # [index]
 
         self.tf_listener = tf.TransformListener()
 
-        # Pub/Sub
+        # Publishers
+        self.pub_command = rospy.Publisher('/{}/command'.format(str(sys.argv[1])), AckermannDrive, queue_size = 1)
+
+        # Subscribers
         # self.sub_pose    = rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, self.callback_pose)
         self.sub_path    = rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, self.callback_path)
         self.sub_odom    = rospy.Subscriber('/car_1/base/odom', Odometry, self.callback_odom)
         self.sub_vel_profile = rospy.Subscriber('/move_base/MyGlobalPlanner/velocity_profile', Float64MultiArray, self.callback_vel_profile)
-        self.pub_command = rospy.Publisher('/{}/command'.format(str(sys.argv[1])), AckermannDrive, queue_size = 1)
+        self.sub_curvature = rospy.Subscriber('move_base/MyGlobalPlanner/curvature', Float64MultiArray, self.callback_curvature)
 
     def callback_path(self, msg):
         self.x_list = []
@@ -128,6 +148,12 @@ class AutoController():
         # Log the local velocities
         # rospy.loginfo("Local linear velocities: vx: {:.3f}, vy: {:.3f}".format(self.ego_vx, self.ego_vy))
 
+    def callback_vel_profile(self, msg):
+        self.velocity_profile = msg.data
+
+    def callback_curvature(self, msg):
+        self.curvature = msg.data
+
     def get_map_coordinates(self, x, y):
         point_in_odom = PointStamped()
         point_in_odom.header.frame_id = "odom"
@@ -147,10 +173,7 @@ class AutoController():
             return transformed_x, transformed_y
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
             rospy.logwarn("Transformation error: %s", e)
-            return x, y
-
-    def callback_vel_profile(self, msg):
-        self.velocity_profile = msg.data
+            return x, y        
 
     def publish_command(self, steer, speed):
         command = AckermannDrive()
@@ -158,32 +181,12 @@ class AutoController():
         command.speed = speed
         self.pub_command.publish(command)
 
-def precompute_gain_tables(v_min, v_max, num_points):
-    v_values = np.linspace(v_min, v_max, num_points)
-    K_values = {}
-
-    L = 0.325 # tmp wheel base
-    Q = np.array([[300, 0],
-                  [0, 100]])
-    R = np.array([[2600]])
-
-    for v in v_values:
-        A = np.array([[0, v], [0, 0]])
-        B = np.array([[0], [v / L]])
-        P = solve_continuous_are(A, B, Q, R)
-        K = -np.dot(np.dot(np.linalg.inv(R), B.T), P)
-        K_values[v] = K
-
-    return K_values
-
 def main():
-
     # List to evaluate performance
     error_y_data = []
 
     K_values = precompute_gain_tables(0.02, 4.02, 401)
 
-    # Define controller
     auto_control = AutoController()
     try:
         while not rospy.is_shutdown():
@@ -215,22 +218,27 @@ def main():
             auto_control.wpt_look_ahead = int(0.5 * ego_vx)
             if (auto_control.wpt_look_ahead < 1):
                 auto_control.wpt_look_ahead = 1
-            rospy.loginfo('look ahead {}'.format(auto_control.wpt_look_ahead))
+            print('look ahead {}'.format(auto_control.wpt_look_ahead))
 
             # Lateral error calculation (cross-track error, yaw error)
-            error_y, error_yaw, near_idx = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=auto_control.wpt_look_ahead)
+            error_y, error_yaw, near_idx, look_ahead_idx = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=auto_control.wpt_look_ahead)
 
             # Longitudinal error calculation (speed error)
             # error_v = auto_control.target_speed - ego_vx
 
             # Log errors (errors w.r.t. the closest point)
-            error_y_log, _, _ = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=0)
+            error_y_log, _, _, _ = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=0)
             error_y_data.append(abs(error_y_log))
 
             # Lateral control
             nearest_vx = min(K_values.keys(), key=lambda x: abs(x-ego_vx))
+            feedforward = 0.0
+            if len(auto_control.curvature) > near_idx:
+                feedforward = auto_control.wheel_base * auto_control.curvature[near_idx]
             K = np.array(K_values[nearest_vx])
+            # steer = feedforward
             steer = -np.dot(K, np.array([error_y, error_yaw]))
+            # steer = -np.dot(K, np.array([error_y, error_yaw])) + feedforward
             steer_cmd = np.clip(steer, -auto_control.MAX_STEER, auto_control.MAX_STEER)
             
             # Longitudinal speed command
