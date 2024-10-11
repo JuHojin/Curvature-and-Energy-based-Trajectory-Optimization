@@ -199,26 +199,35 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
         publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
       
+        std::vector<geometry_msgs::PoseStamped> final_plan;
         nav_msgs::Path final_plan_world;
         std::vector<geometry_msgs::PoseStamped> uniform_plan;
         nav_msgs::Path uniform_plan_world;
         if (planner_type == 0) {
-            // A* only (Uniform Spacing)
+            // A* only (Last uniform step size)
             uniform_plan = uniformSpacing(post_smooth_plan, Constant::LAST_UNIFORM_STEP);
             final_plan_world = producePathMapToWorld(uniform_plan);
+            publishPath(plan_publisher_initial, final_plan_world);
             publishPath(plan_publisher_latest, final_plan_world);
         } else {
-            // Uniform Spacing
-            uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
-            uniform_plan_world = producePathMapToWorld(uniform_plan);
-            publishPath(plan_publisher_uniform, uniform_plan_world);
-
             if (planner_type == 1) {
+                // Uniform Spacing (normal uniform step size)
+                uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+                uniform_plan_world = producePathMapToWorld(uniform_plan);
+                publishPath(plan_publisher_uniform, uniform_plan_world);
+
                 // B-spline
                 ros::NodeHandle nh;
                 ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
                 my_global_planner::BSplineSmoothing srv;
-                srv.request.input_plan = uniform_plan_world;
+
+                // Convert std::vector<geometry_msgs::PoseStamped> uniform_plan to nav_msgs::Path for service input
+                nav_msgs::Path uniform_plan_path;
+                uniform_plan_path.header.frame_id = "map"; // Or any other frame that fits your setup
+                uniform_plan_path.header.stamp = ros::Time::now();
+                uniform_plan_path.poses = uniform_plan;
+
+                srv.request.input_plan = uniform_plan_path;
 
                 if (!client.call(srv)) {
                     ROS_ERROR("Failed to call B-spline smoothing service.");
@@ -230,12 +239,24 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                     return false;
                 }
 
-                final_plan_world = srv.response.output_plan;
+                nav_msgs::Path b_spline_plan = srv.response.output_plan;
 
                 ROS_INFO("Successfully received B-spline path from the service.");
+                
+                // Apply uniform spacing to the B-spline output using the last uniform step size
+                final_plan = uniformSpacing(b_spline_plan.poses, Constant::LAST_UNIFORM_STEP);
+                final_plan_world = producePathMapToWorld(final_plan);
+                
+                // Publish the final plan
+                publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
             }
             else if (planner_type == 2) {
+                // Uniform Spacing (normal uniform step size)
+                uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+                uniform_plan_world = producePathMapToWorld(uniform_plan);
+                publishPath(plan_publisher_uniform, uniform_plan_world);
+
                 // QP optimization
                 // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
                 std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
@@ -248,7 +269,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
                 // Final plan - make opt_path uniform
                 std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-                std::vector<geometry_msgs::PoseStamped> final_plan = uniformSpacing(last_opt_plan, Constant::LAST_UNIFORM_STEP);
+                final_plan = uniformSpacing(last_opt_plan, Constant::LAST_UNIFORM_STEP);
                 final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
@@ -271,11 +292,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Calculate curvature of final plan
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
-        std_msgs::Float64MultiArray curvature_msg;
-        for (int i = 0; i < curvature.size(); ++i) {
-           curvature_msg.data.push_back(curvature[i]);
-        }
-        curvature_publisher.publish(curvature_msg);
+        publishCurvature(curvature_publisher, curvature);
 
         // Calculate velocity Profile
         auto velocity_result = getVelocityProfile(curvature, Constant::LAST_UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
@@ -617,22 +634,30 @@ void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg) {
     publisher.publish(path_msg);
 }
 
-void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile) {
+void publishVelocityProfile(const ros::Publisher& publisher, const Eigen::VectorXd& velocity_profile) {
     std_msgs::Float64MultiArray profile_msg;
     for (int i = 0; i < velocity_profile.size(); ++i) {
         profile_msg.data.push_back(velocity_profile(i));
     }
-    profile_pub.publish(profile_msg);
+    publisher.publish(profile_msg);
 }
 
-void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints) {
+void publishVelocityConstraints(const ros::Publisher& publisher, const Eigen::MatrixXd& velocity_constraints) {
     std_msgs::Float64MultiArray constraints_msg;
     for (int i = 0; i < velocity_constraints.rows(); ++i) {
         for (int j = 0; j < velocity_constraints.cols(); ++j) {
             constraints_msg.data.push_back(velocity_constraints(i, j));
         }
     }
-    constraints_pub.publish(constraints_msg);
+    publisher.publish(constraints_msg);
+}
+
+void publishCurvature(const ros::Publisher& publisher, const Eigen::VectorXd& curvatures) {
+    std_msgs::Float64MultiArray curvature_msg;
+    for (int i = 0; i < curvatures.size(); ++i) {
+        curvature_msg.data.push_back(curvatures[i]);
+    }
+    publisher.publish(curvature_msg);
 }
 
 // ========================================
