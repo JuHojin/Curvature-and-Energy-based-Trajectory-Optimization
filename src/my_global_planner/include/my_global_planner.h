@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int32MultiArray.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <costmap_2d/costmap_2d_ros.h>
 #include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/OccupancyGrid.h>
@@ -37,8 +38,9 @@ extern ros::Publisher plan_publisher_opt;
 extern ros::Publisher optimization_status_publisher;
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
-void publishVelocityProfile(const ros::Publisher& profile_pub, const Eigen::VectorXd& velocity_profile);
-void publishVelocityConstraints(const ros::Publisher& constraints_pub, const Eigen::MatrixXd& velocity_constraints);
+void publishVelocityProfile(const ros::Publisher& publisher, const Eigen::VectorXd& velocity_profile);
+void publishVelocityConstraints(const ros::Publisher& publisher, const Eigen::MatrixXd& velocity_constraints);
+void publishCurvature(const ros::Publisher& publisher, const Eigen::VectorXd& curvatures);
 
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path);
 std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geometry_msgs::PoseArray& opt_pin_point_list, const std::vector<geometry_msgs::PoseStamped>& final_plan);

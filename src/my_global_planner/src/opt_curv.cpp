@@ -26,8 +26,8 @@ ros::Publisher optimization_status_publisher;
 std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer) {
     
     std::vector<Eigen::Vector2d> new_path = path;
-    Eigen::VectorXd alpha;
     std::vector<double> travel_times;
+    Boundaries prev_boundaries;
     bool success_flag;
 
     int qp_type;
@@ -52,11 +52,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Boundaries
         Boundaries Boundaries = getBoundaries(path, normal_vectors, local);
-        
+        prev_boundaries = Boundaries;
         // for (size_t i = 0; i < Boundaries.left_bnd.distances.size(); ++i) {
         //     ROS_INFO("Distance[%zu]: %f", i, Boundaries.left_bnd.distances[i]);
         // }
-
 
         // Publish Boundary Lines
         // Normal planning
@@ -163,7 +162,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Alpha calculation
         auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle, Constant::GAMMA);
-        alpha = result.first;
+        Eigen::VectorXd alpha = result.first;
         int success = result.second;
 
         if (success == OSQP_SOLVED) {
@@ -174,6 +173,14 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             
         } else {
             ROS_INFO("Optimization Failed at step [%d]", i + 1);
+            // Reverting to the previous boundaries
+            std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
+            nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
+            nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
+            publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
+            publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
+            
             success_flag = false;
             break;
         }
@@ -194,7 +201,16 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         // Compare current travel time with previous iteration
         if (i >= 2 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
             ROS_INFO("Current travel time is longer than the previous one or is NaN. Reverting to path at step [%d]", i);
-            new_path = path; // Revert to the previous path
+            // Revert to the previous path
+            new_path = path; 
+            // Revert to the previous boundaries
+            std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
+            nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
+            nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
+            publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
+            publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
+
             success_flag = true;
             break;
         }
@@ -523,35 +539,50 @@ Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, dou
 // ========================================
 // Optimization
 // ========================================
-csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat) {
-    // Count nonzeros in the upper triangular part
+csc* denseToCSC(const Eigen::MatrixXd& mat) {
+    int rows = mat.rows();
+    int cols = mat.cols();
+    
+    // Step 1: Count the number of non-zero elements
     int nonzeros = 0;
-    for (int k = 0; k < mat.outerSize(); ++k) {
-        for (Eigen::SparseMatrix<double>::InnerIterator it(mat, k); it; ++it) {
-            if (it.row() <= it.col()) {
+    for (int j = 0; j < cols; ++j) {
+        for (int i = 0; i < rows; ++i) {
+            if (mat(i, j) != 0) {
                 nonzeros++;
             }
         }
     }
 
+    // Step 2: Allocate memory for CSC representation
     c_int* row_indices = (c_int*)c_malloc(nonzeros * sizeof(c_int));
-    c_int* col_pointers = (c_int*)c_malloc((mat.cols() + 1) * sizeof(c_int));
+    c_int* col_pointers = (c_int*)c_malloc((cols + 1) * sizeof(c_int));
     c_float* values = (c_float*)c_malloc(nonzeros * sizeof(c_float));
 
+    // Step 3: Fill CSC representation
     int idx = 0;
     col_pointers[0] = 0;
-    for (int k = 0; k < mat.outerSize(); ++k) {
-        for (Eigen::SparseMatrix<double>::InnerIterator it(mat, k); it; ++it) {
-            if (it.row() <= it.col()) { // Only upper triangular part
-                values[idx] = it.value();
-                row_indices[idx] = it.row();
+    for (int j = 0; j < cols; ++j) {
+        for (int i = 0; i < rows; ++i) {
+            if (mat(i, j) != 0) {
+                values[idx] = mat(i, j);
+                row_indices[idx] = i;
                 idx++;
             }
         }
-        col_pointers[k + 1] = idx;
+        col_pointers[j + 1] = idx;
     }
 
-    return csc_matrix(mat.rows(), mat.cols(), nonzeros, values, row_indices, col_pointers);
+    // Step 4: Return the CSC matrix
+    return csc_matrix(rows, cols, nonzeros, values, row_indices, col_pointers);
+}
+
+
+double calculateSparsity(const Eigen::MatrixXd& mat) {
+    int total_elements = mat.size();
+    int non_zero_elements = (mat.array() != 0).count();
+    double sparsity = 1.0 - static_cast<double>(non_zero_elements) / total_elements;
+    ROS_INFO("Sparsity: %.2f%%", sparsity * 100);
+    return sparsity;
 }
 
 std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
@@ -738,9 +769,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     u.segment(num_points, num_points) = curv_constraints_ge;
     l.segment(num_points, num_points) = curv_constraints_le;
 
-
-
-
     // // Convert Eigen matrices/vectors to string for ROS_INFO
     // std::stringstream ss_E, ss_u, ss_l;
     // // ss_E << E;
@@ -756,27 +784,29 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
     // ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
 
+    // Sparsity calculation and Sparse/Dense optimization branching
+    // double sparsity_threshold = 0.7;  // Consider as sparse if more than 90% are zeros
+    // double H_sparsity = calculateSparsity(H);
+    // double E_sparsity = calculateSparsity(E);
 
+    // Use upper triangular part of H
+    Eigen::MatrixXd H_upper = H.triangularView<Eigen::Upper>();
 
-
-    // Solve QP
-    Eigen::SparseMatrix<double> H_sparse = H.sparseView();
-    Eigen::SparseMatrix<double> E_sparse = E.sparseView();
-
-    // OSQP problem settings
+    // Use OSQP settings as usual for dense matrix optimization
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     osqp_set_default_settings(settings);
     settings->rho = 0.1;
     settings->alpha = 1.6;
     settings->verbose = 0;
+    settings->warm_start = 1;
 
     // OSQP data
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
-    data->n = H.rows();
+    data->n = H_upper.rows();
     data->m = E.rows();
-    data->P = eigenToCSC(H_sparse);
+    data->P = denseToCSC(H_upper);
     data->q = f.data();
-    data->A = eigenToCSC(E_sparse);
+    data->A = denseToCSC(E);
     data->l = l.data();
     data->u = u.data();
 

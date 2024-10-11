@@ -12,7 +12,7 @@ class BsplinePostProcessor:
         self.bspline_service = rospy.Service('/bspline_smoothing_service', BSplineSmoothing, self.handle_bspline_request)
 
         # Get smoothing parameters from ROS parameters
-        self.smoothing_factor = rospy.get_param('~smoothing_factor', 0.15)
+        self.smoothing_factor = rospy.get_param('~smoothing_factor', 30)
         self.spline_degree = rospy.get_param('~spline_degree', 3)
 
     def handle_bspline_request(self, req):
@@ -30,7 +30,7 @@ class BsplinePostProcessor:
             y[i] = pose.pose.position.y
 
         tck, _ = splprep([x, y], s=self.smoothing_factor, k=self.spline_degree)
-        u_new = np.linspace(0, 1, len(x) * 10)
+        u_new = np.linspace(0, 1, len(x) * 1)
         x_smooth, y_smooth = splev(u_new, tck)
 
         bspline_path = Path()

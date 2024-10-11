@@ -28,7 +28,8 @@ void constrainDeviationChange(std::vector<double>& dev_list);
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool local);
 Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, double dy, double distance);
 
-csc* eigenToCSC(const Eigen::SparseMatrix<double>& mat);
+csc* denseToCSC(const Eigen::MatrixXd& mat);
+double calculateSparsity(const Eigen::MatrixXd& mat);
 std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Vector2d>& path,
                                      std::vector<double> left_dev_bnd,
                                      std::vector<double> right_dev_bnd,
