@@ -57,6 +57,7 @@ std::vector<geometry_msgs::PoseStamped> postSmooth (std::vector<geometry_msgs::P
     new_plan.push_back(plan.back());
 
     updateOrientation(new_plan);
+    // hellow word
 
     return new_plan;
 }
