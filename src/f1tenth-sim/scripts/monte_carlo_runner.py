@@ -238,7 +238,6 @@ def main():
             if plan_received:
                 rospy.set_param('/auto_control_active', True)
                 start_time = rospy.Time.now()
-                plan_received = False
                 break
             rate.sleep()
 
@@ -263,6 +262,7 @@ def main():
                     break
             rate.sleep()
 
+        plan_received = False
         print("Racecar arrived at the goal\n")
         # rospy.sleep(2)
 

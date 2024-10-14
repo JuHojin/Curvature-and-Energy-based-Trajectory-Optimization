@@ -241,7 +241,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 0; 255; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.10000000149011612
       Head Length: 0.10000000149011612
       Length: 0.10000000149011612
@@ -259,7 +259,7 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/opt
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
