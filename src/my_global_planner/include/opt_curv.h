@@ -24,6 +24,7 @@ double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::Vect
 
 // Boundaries
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, bool use_local_costmap);
+void constrainDeviationToPreventCrossing(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, std::vector<double>& dev_list);
 void constrainDeviationChange(std::vector<double>& dev_list);
 double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool local);
 Eigen::Vector2d createBoundaryPoint(const Eigen::Vector2d& point, double dx, double dy, double distance);

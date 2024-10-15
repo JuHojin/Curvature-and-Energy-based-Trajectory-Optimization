@@ -194,8 +194,8 @@ bool isClearLine(geometry_msgs::PoseStamped& start_pose, geometry_msgs::PoseStam
     int start_y = start_pose.pose.position.y;
     int dx = end_pose.pose.position.x - start_x;
     int dy = end_pose.pose.position.y - start_y;
-    int abs_dx = abs(dx);
-    int abs_dy = abs(dy);
+    int abs_dx = std::abs(dx);
+    int abs_dy = std::abs(dy);
     int x_inc = (dx > 0) ? 1 : -1;
     int y_inc = (dy > 0) ? 1 : -1;
     int n = 1 + abs_dx + abs_dy;
@@ -223,8 +223,8 @@ bool isClearLine(int start_x, int start_y, int end_x, int end_y) {
     // Bresenham's line algorithm
     int dx = end_x - start_x;
     int dy = end_y - start_y;
-    int abs_dx = abs(dx);
-    int abs_dy = abs(dy);
+    int abs_dx = std::abs(dx);
+    int abs_dy = std::abs(dy);
     int x_inc = (dx > 0) ? 1 : -1;
     int y_inc = (dy > 0) ? 1 : -1;
     int n = 1 + abs_dx + abs_dy;
@@ -300,7 +300,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     // Compute the lateral acceleration constraints
     for (size_t i = 0; i < len_path; ++i) {
         double k = curvature(i);
-        double v = std::sqrt(max_ay / abs(k));
+        double v = std::sqrt(max_ay / std::abs(k));
         // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
         v = std::min(v, max_vel + 1);
         lat_acc(i) = v;

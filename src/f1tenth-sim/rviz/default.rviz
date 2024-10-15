@@ -6,7 +6,12 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Post Smooth Path1
         - /Optimizing Path1
+        - /Latest Path1
+        - /Right Boundary1
+        - /Right Replan Boundary1
+        - /Replanning Line1
         - /Fixed Start Point1
         - /Fixed Pin Point1
         - /Fixed Ahead Point1
@@ -194,7 +199,7 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
-      Color: 25; 255; 0
+      Color: 204; 0; 0
       Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
@@ -241,7 +246,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 0; 255; 0
-      Enabled: false
+      Enabled: true
       Head Diameter: 0.10000000149011612
       Head Length: 0.10000000149011612
       Length: 0.10000000149011612
@@ -259,7 +264,7 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /move_base/MyGlobalPlanner/plan/opt
       Unreliable: false
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -309,7 +314,7 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
-      Color: 25; 255; 0
+      Color: 239; 41; 41
       Enabled: true
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
@@ -517,22 +522,22 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 51.11137008666992
+      Distance: 21.24597930908203
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.14260227978229523
-        Y: 9.622108459472656
-        Z: -0.7271917462348938
+        X: -11.446988105773926
+        Y: 3.530283212661743
+        Z: -1.6247249841690063
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.4347964525222778
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
       Yaw: 4.712296962738037

@@ -327,6 +327,7 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
     boundaries.right_bnd.points.resize(n);
     boundaries.right_bnd.distances.resize(n);
 
+    // Create the boundary tube (lateral distance)
     for (size_t i = 0; i < n; ++i) {
         const auto& point = path[i];
         const auto& normal = normal_vectors[i];
@@ -341,9 +342,21 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
         boundaries.right_bnd.distances[i] = checkBoundary(point, right_dx, right_dy, local);
     }
 
+    // Create right normal vectors
+    std::vector<Eigen::Vector2d> inverted_normal_vectors(normal_vectors.size());
+    for (size_t i = 0; i < normal_vectors.size(); ++i) {
+        inverted_normal_vectors[i] = -normal_vectors[i];
+    }
+
+    // Constrain the deviation to prevent boundary crossing
+    constrainDeviationToPreventCrossing(path, normal_vectors, boundaries.left_bnd.distances);
+    constrainDeviationToPreventCrossing(path, inverted_normal_vectors, boundaries.right_bnd.distances);
+
+    // Constrain the deviation change
     constrainDeviationChange(boundaries.left_bnd.distances);
     constrainDeviationChange(boundaries.right_bnd.distances);
 
+    // Create boundary points to publish
     for (size_t i = 0; i < n; ++i) {
         const auto& point = path[i];
         const auto& normal = normal_vectors[i];
@@ -508,6 +521,39 @@ double checkBoundary(const Eigen::Vector2d& point, double dx, double dy, bool us
 
 
     return last_valid_d;
+}
+
+void constrainDeviationToPreventCrossing(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, std::vector<double>& dev_list) {
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        double n1x = normal_vectors[i].x();
+        double n1y = normal_vectors[i].y();
+        double n2x = normal_vectors[i + 1].x();
+        double n2y = normal_vectors[i + 1].y();
+
+        double p1x = path[i].x();
+        double p1y = path[i].y();
+        double p2x = path[i + 1].x();
+        double p2y = path[i + 1].y();
+
+        double determinant = -n1x * n2y + n1y * n2x;
+
+        // Parallel lines
+        if (std::abs(determinant) == 0.0) {
+            continue;
+        }
+
+        double t = std::abs((-n2y * (p2x - p1x) + n2x * (p2y - p1y)) / determinant);
+        double s = std::abs((n1x * (p2y - p1y) - n1y * (p2x - p1x)) / determinant);
+
+        if (t < dev_list[i]) {
+            dev_list[i] = std::max(0.0, t - Constant::DEV_EPSILON);
+            ROS_INFO("Cutting deviation at index %zu, t = %f", i, t);
+        }
+        if (s < dev_list[i + 1]) {
+            dev_list[i + 1] = std::max(0.0, s - Constant::DEV_EPSILON);
+            ROS_INFO("Cutting deviation at index %zu, s = %f", i + 1, s);
+        }
+    }
 }
 
 void constrainDeviationChange(std::vector<double>& dev_list) {
