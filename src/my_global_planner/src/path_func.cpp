@@ -301,13 +301,13 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     // Compute the lateral acceleration constraints
     for (size_t i = 0; i < len_path; ++i) {
         double k = curvature(i);
-        if (k < 1e-7) {
-            k = 1e-7;
-        }
         double v = std::sqrt(max_ay / std::abs(k));
         // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
         v = std::min(v, max_vel + 1);
         lat_acc(i) = v;
+        if (v < max_vel) {
+            ROS_INFO("\n[%d] k: %f, vy: %f", i, k, v);
+        }
     }
 
     Eigen::MatrixXd velocity_constraints(2, len_path);
@@ -371,6 +371,70 @@ Eigen::Vector2d getCircumcenter(const Eigen::Vector2d& pt1, const Eigen::Vector2
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path) {
     int n = path.size();
     Eigen::VectorXd curvature(n);
+
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);
+
+        if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
+            curvature(i) = 0.0;
+        } else {
+            double R = calculateDistance(path[i], center_point);
+            if (R != 0.0) {
+                curvature(i) = 1.0 / R;
+            } else {
+                curvature(i) = 0.0;
+            }
+        }
+    }
+
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
+
+    return curvature;
+}
+
+Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path_msg) {
+    int n = path_msg.poses.size();
+    Eigen::VectorXd curvature(n);
+
+    std::vector<Eigen::Vector2d> path;
+    for (const auto& pose : path_msg.poses) {
+        double x = pose.pose.position.x;
+        double y = pose.pose.position.y;
+        path.emplace_back(x, y);
+    }
+
+    for (int i = 1; i < n - 1; ++i) {
+        Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);
+
+        if (!std::isfinite(center_point.x()) || !std::isfinite(center_point.y())) {
+            curvature(i) = 0.0;
+        } else {
+            double R = calculateDistance(path[i], center_point);
+            if (R != 0.0) {
+                curvature(i) = 1.0 / R;
+            } else {
+                curvature(i) = 0.0;
+            }
+        }
+    }
+
+    curvature(0) = 0.0;
+    curvature(n - 1) = 0.0;
+
+    return curvature;
+}
+
+Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<geometry_msgs::PoseStamped>& plan) {
+    int n = plan.size();
+    Eigen::VectorXd curvature(n);
+
+    std::vector<Eigen::Vector2d> path;
+    for (const auto& pose : plan) {
+        double x = pose.pose.position.x;
+        double y = pose.pose.position.y;
+        path.emplace_back(x, y);
+    }
 
     for (int i = 1; i < n - 1; ++i) {
         Eigen::Vector2d center_point = getCircumcenter(path[i - 1], path[i], path[i + 1]);

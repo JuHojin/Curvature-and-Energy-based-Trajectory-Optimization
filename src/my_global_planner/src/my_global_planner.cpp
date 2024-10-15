@@ -244,7 +244,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 ROS_INFO("Successfully received B-spline path from the service.");
                 
                 // Apply uniform spacing to the B-spline output using the last uniform step size
-                final_plan = uniformSpacing(b_spline_plan.poses, Constant::LAST_UNIFORM_STEP);
+                final_plan = uniformSpacing(b_spline_plan.poses, Constant::UNIFORM_STEP);
                 final_plan_world = producePathMapToWorld(final_plan);
                 
                 // Publish the final plan
@@ -278,6 +278,20 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
                 // }
 
+                // Save final_plan_world.poses to CSV file
+                std::ofstream csv_file("/home/acss/catkin_ws/src/my_global_planner/data/final_plan.csv");
+                if (csv_file.is_open()) {
+                    csv_file << "x,y\n";
+                    for (const auto& pose : final_plan_world.poses) {
+                        csv_file << pose.pose.position.x << ","
+                                 << pose.pose.position.y << "\n";
+                    }
+                    csv_file.close();
+                    ROS_INFO("Final plan saved to CSV file successfully.");
+                } else {
+                    ROS_ERROR("Unable to open file to save final plan.");
+                }
+
                 // Update pin points (based on final_plan)
                 auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
                 my_global_planner::PinPoints pin_points_msg;
@@ -291,7 +305,8 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         }
 
         // Calculate curvature of final plan
-        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
+        // Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
+        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
         publishCurvature(curvature_publisher, curvature);
 
         // Calculate velocity Profile

@@ -156,7 +156,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             publishPath(plan_publisher_bnd_L_replan, left_bnd_replan_world);
             publishPath(plan_publisher_bnd_R_replan, right_bnd_replan_world);
         }
-        
+
         // Calculate start and end angles
         Eigen::Vector2d start_segment = path[1] - path[0];
         Eigen::Vector2d end_segment = path[path.size() - 1] - path[path.size() - 2];
@@ -176,6 +176,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             
         } else {
             ROS_INFO("Optimization Failed at step [%d]", i + 1);
+            new_path = path;
             // Reverting to the previous boundaries
             std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
             std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);

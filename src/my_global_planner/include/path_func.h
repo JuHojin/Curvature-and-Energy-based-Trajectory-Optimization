@@ -19,6 +19,7 @@ double getTurningRadius(const Eigen::Vector2d& pt1, const Eigen::Vector2d& pt2, 
 std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path);
+Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<geometry_msgs::PoseStamped>& plan);
 Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg);
 
 // Post Smoothing
