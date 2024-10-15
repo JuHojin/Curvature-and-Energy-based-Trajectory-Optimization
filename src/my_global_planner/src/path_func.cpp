@@ -300,13 +300,13 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     // Compute the lateral acceleration constraints
     for (size_t i = 0; i < len_path; ++i) {
         double k = curvature(i);
-        double v = std::sqrt(max_ay / std::abs(k));
+        double v = std::sqrt(max_ay / abs(k));
         // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
         v = std::min(v, max_vel + 1);
         lat_acc(i) = v;
-        if (v < max_vel) {
-            ROS_INFO("\n[%d] k: %f, vy: %f", i, k, v);
-        }
+        // if (v < max_vel) {
+        //     ROS_INFO("\n[%zu] k: %f, vy: %f", i, k, v);
+        // }
     }
 
     Eigen::MatrixXd velocity_constraints(2, len_path);

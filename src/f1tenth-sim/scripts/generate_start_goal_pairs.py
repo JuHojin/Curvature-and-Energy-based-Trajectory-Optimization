@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-
 import csv
 import random
 import os
 
-START_MIN_X = -12.0
-START_MAX_X = -11.0
-START_MIN_Y = -1.0
-START_MAX_Y = 15.8
+START_MIN_X = -17.0
+START_MAX_X = -14.0
+START_MIN_Y = -9.0
+START_MAX_Y = 9.0
 
-GOAL_MIN_X = 11.9
-GOAL_MAX_X = 12.1
-GOAL_MIN_Y = -1.0
-GOAL_MAX_Y = 15.8
+GOAL_MIN_X = 14.0
+GOAL_MAX_X = 17.0
+GOAL_MIN_Y = -9.0
+GOAL_MAX_Y = 9.0
 
 DATA_DIR = '../data'
 POINTS_FILE = os.path.join(DATA_DIR, 'start_goal_pair.csv')

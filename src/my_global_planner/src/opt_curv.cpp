@@ -1,7 +1,4 @@
 // opt_curv.cpp
-#pragma GCC push_options
-#pragma GCC optimize ("O0")
-
 #include <ros/ros.h>
 #include <cmath>
 #include <limits>
@@ -948,5 +945,3 @@ double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::Vect
 }
 
 } // namespace my_global_planner
-
-#pragma GCC pop_options
