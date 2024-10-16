@@ -3,6 +3,9 @@
 #define CONSTANT_H
 
 namespace Constant {
+    // Map
+    constexpr double MAP_RESOLUTION = 0.05;
+
     // Boundary
     constexpr unsigned int DEV_MAX = 15;
     constexpr unsigned int DEV_DOT = 1;
@@ -15,7 +18,7 @@ namespace Constant {
     constexpr double LAST_UNIFORM_STEP = 1;
 
     // Minimum curvature optimization
-    constexpr double CURVATURE_BOUND = 0.2;
+    constexpr double CURVATURE_BOUND = 0.2 * MAP_RESOLUTION;
     constexpr unsigned int MAX_OPT_ITER = 10;
     constexpr double GAMMA = 0.0;
     

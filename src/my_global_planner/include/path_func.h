@@ -20,6 +20,7 @@ std::tuple<Eigen::VectorXd, double, double> getCurvatureSquareMaxUsingTurningRad
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<geometry_msgs::PoseStamped>& plan);
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg);
 
 // Post Smoothing
@@ -32,7 +33,8 @@ std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>&
 double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_radius);
 
 // Velocity profile
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, const double step_size, double init_velocity, double max_vel, double max_ax, double max_ay);
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);
 void showVelocityProfile(const Eigen::VectorXd& velocity_profile, const Eigen::MatrixXd& velocity_constraints);
 
 } // namespace my_global_planner

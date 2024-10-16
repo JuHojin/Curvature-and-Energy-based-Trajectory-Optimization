@@ -186,16 +186,20 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             break;
         }
 
-        // TODO: uniform apply or not apply
+        // Convert the path from px to meter for curvature calculation, velocity profile generation and travel time calculation
+        std::vector<Eigen::Vector2d> new_path_m = new_path;
+        for (auto& point : new_path_m) {
+            point.x() *= Constant::MAP_RESOLUTION;
+            point.y() *= Constant::MAP_RESOLUTION;
+        }
 
         // Get curvature and velocity profile
-        std::vector<Eigen::Vector2d> new_path_uniform = uniformSpacing(new_path, Constant::UNIFORM_STEP);
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(new_path_uniform);
-        auto velocity_result = getVelocityProfile(curvature, Constant::UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(new_path_m);
+        auto velocity_result = getVelocityProfile(new_path_m, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
-
-        // Travel time
-        double travel_time = getTravelTime(new_path_uniform, velocity_profile);
+        
+        // Get travel time
+        double travel_time = getTravelTime(new_path_m, velocity_profile);
         ROS_INFO("\nOpt. Step [%d] Expected Travel Time: %f", i + 1, travel_time);
         travel_times.push_back(travel_time);
 
@@ -695,7 +699,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     // Construct reference path vector
     Eigen::VectorXd p_x = Eigen::VectorXd::Zero(num_splines * 4);
     Eigen::VectorXd p_y = Eigen::VectorXd::Zero(num_splines * 4);
-
     for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
         const auto& point = path[i];
@@ -716,7 +719,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
             p_y(j + 1) = path[0].y();
         }
     }
-
     p_x(num_splines * 4 - 2) = std::cos(start_angle);
     p_y(num_splines * 4 - 2) = std::sin(start_angle);
     p_x(num_splines * 4 - 1) = std::cos(end_angle);
@@ -945,8 +947,23 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
     Eigen::VectorXd p_y = Eigen::VectorXd::Zero(num_splines * 4);
     for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
-        p_x.segment(j, 2) << path[i].x(), path[i + 1].x();
-        p_y.segment(j, 2) << path[i].y(), path[i + 1].y();
+        const auto& point = path[i];
+
+        if (i < num_points - 1) {
+            const auto& point_next = path[i + 1];
+
+            p_x(j) = point.x();
+            p_x(j + 1) = point_next.x();
+
+            p_y(j) = point.y();
+            p_y(j + 1) = point_next.y();
+        } else {
+            p_x(j) = point.x();
+            p_x(j + 1) = path[0].x();
+
+            p_y(j) = point.y();
+            p_y(j + 1) = path[0].y();
+        }
     }
     p_x(num_splines * 4 - 2) = std::cos(start_angle);
     p_y(num_splines * 4 - 2) = std::sin(start_angle);
@@ -973,21 +990,26 @@ Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path
 }
 
 double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::VectorXd& velocity_profile) {
-    std::vector<Eigen::Vector2d> deltas;
+    if (path.size() < 2 || velocity_profile.size() < 2) {
+        throw std::invalid_argument("Path and velocity profile must have at least 2 points.");
+    }
+
+    double total_time = 0.0;
+    const double min_velocity = 1e-6;
+
     for (size_t i = 1; i < path.size(); ++i) {
-        deltas.push_back(path[i] - path[i-1]);
+        double distance = (path[i] - path[i - 1]).norm();
+        
+        double avg_velocity = (velocity_profile[i] + velocity_profile[i - 1]) / 2.0;
+
+        if (avg_velocity < min_velocity) {
+            avg_velocity = min_velocity;
+        }
+
+        total_time += distance / avg_velocity;
     }
 
-    std::vector<double> distances(deltas.size());
-    for (size_t i = 0; i < deltas.size(); ++i) {
-        distances[i] = deltas[i].norm();
-    }
-
-    double travel_length = std::accumulate(distances.begin(), distances.end(), 0.0);
-    double avg_vel = velocity_profile.mean();
-    double travel_time = travel_length / avg_vel;
-
-    return travel_time;
+    return total_time;
 }
 
 } // namespace my_global_planner

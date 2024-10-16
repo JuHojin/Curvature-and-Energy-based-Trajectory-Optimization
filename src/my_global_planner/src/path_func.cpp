@@ -289,9 +289,9 @@ double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_r
 // ========================================
 // Velocity Profile
 // ========================================
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::VectorXd& curvature, double step_size, double init_velocity, double max_vel, double max_ax, double max_ay) {
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
 
-    size_t len_path = curvature.size();
+    size_t len_path = path.size();
 
     // Initialize the maximum velocity array with the constant max_vel for all path points
     Eigen::VectorXd max_vel_list = Eigen::VectorXd::Ones(len_path) * max_vel;
@@ -316,10 +316,18 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     // Compute the final velocity profile by taking the minimum of max velocity and lateral acceleration constraints
     Eigen::VectorXd velocity_profile = velocity_constraints.colwise().minCoeff();
 
+    // Distance between each path point
+    std::vector<double> step_sizes(len_path - 1);
+    for (size_t i = 0; i < len_path - 1; ++i) {
+        // Euclidian norm
+        step_sizes[i] = (path[i + 1] - path[i]).norm();
+    }
+
     // Apply forward acceleration constraint
     double v = init_velocity;  // Initial velocity
     velocity_profile(0) = v;
     for (size_t i = 1; i < len_path; ++i) {
+        double step_size = step_sizes[i - 1];
         double next_v = std::sqrt(v * v + 2 * max_ax * step_size);
         if (next_v < velocity_profile(i)) {
             velocity_profile(i) = next_v;
@@ -333,6 +341,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     v = 0;  // Final velocity
     velocity_profile(len_path - 1) = v;
     for (int i = len_path - 2; i >= 0; --i) {
+        double step_size = step_sizes[i];
         double next_v = std::sqrt(v * v + 2 * max_ax * step_size);
         if (next_v < velocity_profile(i)) {
             velocity_profile(i) = next_v;
@@ -345,6 +354,19 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const Eigen::Vect
     return std::make_pair(velocity_profile, velocity_constraints);
 }
 
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
+    // Convert nav_msgs::Path to std::vector<Eigen::Vector2d>
+    size_t len_path = path_msg.poses.size();
+    std::vector<Eigen::Vector2d> path(len_path);
+
+    for (size_t i = 0; i < len_path; ++i) {
+        double x = path_msg.poses[i].pose.position.x;
+        double y = path_msg.poses[i].pose.position.y;
+        path[i] = Eigen::Vector2d(x, y);
+    }
+
+    return getVelocityProfile(path, curvature, init_velocity, max_vel, max_ax, max_ay);
+}
 // ========================================
 // Curvatures
 // ========================================
@@ -456,16 +478,9 @@ Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<geometry_msgs::
     return curvature;
 }
 
-Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg) {
-    int n = path_msg.poses.size();
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const std::vector<Eigen::Vector2d>& path) {
+    int n = path.size();
     Eigen::VectorXd curvature(n);
-
-    std::vector<Eigen::Vector2d> path;
-    for (const auto& pose : path_msg.poses) {
-        double x = pose.pose.position.x;
-        double y = pose.pose.position.y;
-        path.emplace_back(x, y);
-    }
 
     for (int i = 1; i < n - 1; ++i) {
         Eigen::Vector2d d1 = path[i] - path[i - 1];
@@ -489,6 +504,19 @@ Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg
     curvature(n - 1) = 0.0;
 
     return curvature;
+}
+
+Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg) {
+    int n = path_msg.poses.size();
+    std::vector<Eigen::Vector2d> path(n);
+
+    for (int i = 0; i < n; ++i) {
+        double x = path_msg.poses[i].pose.position.x;
+        double y = path_msg.poses[i].pose.position.y;
+        path[i] = Eigen::Vector2d(x, y);
+    }
+
+    return getCurvatureUsingFiniteDifference(path);
 }
 
 } // namespace my_global_planner
