@@ -17,5 +17,6 @@
     <node if="$(eval arg('path_planner') == 'B_spline')" pkg="my_global_planner" type="bspline.py" name="bspline_node" output="screen">
         <param name="smoothing_factor" value="0.3"/> <!-- smoothing factor -->
         <param name="spline_degree" value="3"/>      <!-- spline degree -->
+        <param name="num_splice_points" value="1"/>  <!-- number of splice points -->
     </node>
 </launch>

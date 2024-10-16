@@ -524,7 +524,7 @@ Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg
 // ========================================
 // B-spline Smoothing Service
 // ========================================
-bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& input_plan, std::vector<geometry_msgs::PoseStamped>& output_plan) {
+bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& input_plan, std::vector<geometry_msgs::PoseStamped>& output_plan, int smoothing_factor, int spline_degree, int num_splice_points) {
     ros::NodeHandle nh;
     ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
     my_global_planner::BSplineSmoothing srv;
@@ -537,6 +537,22 @@ bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& 
 
     srv.request.input_plan = input_plan_path;
 
+    if (smoothing_factor != -1) {
+        nh.setParam("/bspline_smoothing_service/smoothing_factor", smoothing_factor);
+        ROS_INFO("Set smoothing_factor: %d", smoothing_factor);
+    }
+
+    if (spline_degree != -1) {
+        nh.setParam("/bspline_smoothing_service/spline_degree", spline_degree);
+        ROS_INFO("Set spline_degree: %d", spline_degree);
+    }
+
+    if (num_splice_points != -1) {
+        nh.setParam("/bspline_smoothing_service/num_splice_points", num_splice_points);
+        ROS_INFO("Set num_splice_points: %d", num_splice_points);
+    }
+
+    // Service call
     if (!client.call(srv)) {
         ROS_ERROR("Failed to call B-spline smoothing service.");
         return false;

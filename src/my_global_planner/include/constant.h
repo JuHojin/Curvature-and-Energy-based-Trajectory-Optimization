@@ -39,6 +39,11 @@ namespace Constant {
     constexpr unsigned char OBSTACLE_INFLATION_INIT = 120;
     constexpr unsigned char OBSTACLE_INFLATION = 120;
     constexpr unsigned char LOCAL_OBSTACLE_INFLATION = 10;
+
+    // Spline: B-spline
+    constexpr int SMOOTHING_FACTOR = 0.1;
+    constexpr int SPLINE_DEGREE = 3;
+    constexpr int NUM_SPLINE_POINTS = 1;
 }
 
 #endif // CONSTANT_H

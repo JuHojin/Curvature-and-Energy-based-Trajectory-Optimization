@@ -247,7 +247,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 
                 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 // TODO: B-spine smoothing to last_opt_plan
-                if (!callBSplineSmoothingService(last_opt_plan, final_plan)) {
+                if (!callBSplineSmoothingService(last_opt_plan, final_plan, Constant::SMOOTHING_FACTOR, Constant::SPLINE_DEGREE, Constant::NUM_SPLINE_POINTS)) {
                     return false;
                 }
 
