@@ -18,13 +18,16 @@ namespace Constant {
     constexpr double LAST_UNIFORM_STEP = 1;
 
     // Minimum curvature optimization
-    constexpr double CURVATURE_BOUND = 0.7 * MAP_RESOLUTION;
+    constexpr double CURVATURE_BOUND = 0.5 * MAP_RESOLUTION;
+    constexpr double CURVATURE_BOUND_MAX = 1.5 * MAP_RESOLUTION;
+    constexpr double CURVATURE_BOUND_MIN = 0.5 * MAP_RESOLUTION;
+    constexpr double CURVATURE_BOUND_DECAY = 0.6;
     constexpr unsigned int MAX_OPT_ITER = 10;
     constexpr double GAMMA = 0.0;
     
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;
-    constexpr double MAX_AX = 0.1;
+    constexpr double MAX_AX = 1;
     constexpr double MAX_AY = 2;
     constexpr double INIT_VELOCITY = 0;
 

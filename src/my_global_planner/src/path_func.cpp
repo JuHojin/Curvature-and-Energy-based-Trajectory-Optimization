@@ -303,7 +303,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector
         double k = curvature(i);
         double v = std::sqrt(max_ay / std::abs(k));
         // Cap the velocity at max_vel + 1 for smooth plot (does not affect the velocity profile)
-        v = std::min(v, max_vel + 1);
+        v = std::min(v, 2 * max_vel);
         lat_acc(i) = v;
         // if (v < max_vel) {
         //     ROS_INFO("\n[%zu] k: %f, vy: %f", i, k, v);
@@ -551,6 +551,5 @@ bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& 
     ROS_INFO("Successfully received B-spline path from the service.");
     return true;
 }
-
 
 } // namespace my_global_planner

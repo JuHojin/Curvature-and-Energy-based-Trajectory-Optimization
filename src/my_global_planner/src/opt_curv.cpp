@@ -160,8 +160,12 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         double start_angle = std::atan2(start_segment.y(), start_segment.x());
         double end_angle = std::atan2(end_segment.y(), end_segment.x());
 
+        // Select curvature bound method (constant/ exponential decay)
+        // double curvature_bound = CURVATURE_BOUND;
+        double curvature_bound = (Constant::CURVATURE_BOUND_MAX - Constant::CURVATURE_BOUND_MIN) * std::exp(-i * Constant::CURVATURE_BOUND_DECAY) + Constant::CURVATURE_BOUND_MIN;
+        
         // Alpha calculation
-        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, Constant::CURVATURE_BOUND, start_angle, end_angle, Constant::GAMMA);
+        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, curvature_bound, start_angle, end_angle, Constant::GAMMA);
         Eigen::VectorXd alpha = result.first;
         int success = result.second;
 
