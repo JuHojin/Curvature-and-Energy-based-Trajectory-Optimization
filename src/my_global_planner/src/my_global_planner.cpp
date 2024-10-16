@@ -15,7 +15,6 @@
 #include "constant.h"
 #include "boundaries.h"
 #include "my_global_planner/PinPoints.h"
-#include "my_global_planner/BSplineSmoothing.h"
 
 // Register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(my_global_planner::MyGlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -213,41 +212,17 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             if (planner_type == 1) {
                 // Uniform Spacing (normal uniform step size)
                 uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+
+                // Uniform_plan_world is for publishing
                 uniform_plan_world = producePathMapToWorld(uniform_plan);
                 publishPath(plan_publisher_uniform, uniform_plan_world);
 
-                // B-spline
-                ros::NodeHandle nh;
-                ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
-                my_global_planner::BSplineSmoothing srv;
-
-                // Convert std::vector<geometry_msgs::PoseStamped> uniform_plan to nav_msgs::Path for service input
-                nav_msgs::Path uniform_plan_path;
-                uniform_plan_path.header.frame_id = "map"; // Or any other frame that fits your setup
-                uniform_plan_path.header.stamp = ros::Time::now();
-                uniform_plan_path.poses = uniform_plan;
-
-                srv.request.input_plan = uniform_plan_path;
-
-                if (!client.call(srv)) {
-                    ROS_ERROR("Failed to call B-spline smoothing service.");
+                if (!callBSplineSmoothingService(uniform_plan, final_plan)) {
                     return false;
                 }
 
-                if (srv.response.output_plan.poses.empty()) {
-                    ROS_ERROR("Received an empty B-spline path from the service.");
-                    return false;
-                }
-
-                nav_msgs::Path b_spline_plan = srv.response.output_plan;
-
-                ROS_INFO("Successfully received B-spline path from the service.");
-                
-                // Apply uniform spacing to the B-spline output using the last uniform step size
-                final_plan = uniformSpacing(b_spline_plan.poses, Constant::UNIFORM_STEP);
-                final_plan_world = producePathMapToWorld(final_plan);
-                
                 // Publish the final plan
+                final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
             }
@@ -269,14 +244,17 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
                 // Final plan - make opt_path uniform
                 std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-                final_plan = uniformSpacing(last_opt_plan, Constant::LAST_UNIFORM_STEP);
+                
+                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                // TODO: B-spine smoothing to last_opt_plan
+                if (!callBSplineSmoothingService(last_opt_plan, final_plan)) {
+                    return false;
+                }
+
+                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
-                // for (size_t i = 0; i < final_plan_world.poses.size(); ++i) {
-                //     const geometry_msgs::PoseStamped& pose = final_plan_world.poses[i];
-                //     std::cout << "Pose[" << i << "]: (" << pose.pose.position.x << ", " << pose.pose.position.y << ")" << std::endl;
-                // }
 
                 // Save final_plan_world.poses to CSV file
                 std::ofstream csv_file("/home/acss/catkin_ws/src/my_global_planner/data/final_plan.csv");
@@ -305,12 +283,11 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         }
 
         // Calculate curvature of final plan
-        // Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
-        Eigen::VectorXd curvature = getCurvatureUsingTurningRadius(final_plan_world);
+        Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
         publishCurvature(curvature_publisher, curvature);
 
         // Calculate velocity Profile
-        auto velocity_result = getVelocityProfile(curvature, Constant::LAST_UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        auto velocity_result = getVelocityProfile(final_plan_world, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
@@ -475,7 +452,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
         // Calculate velocity Profile
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(replanned_path_world);
-        auto velocity_result = getVelocityProfile(curvature, Constant::LAST_UNIFORM_STEP, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+        auto velocity_result = getVelocityProfile(replanned_path_world, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);

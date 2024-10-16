@@ -37,6 +37,9 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);
 void showVelocityProfile(const Eigen::VectorXd& velocity_profile, const Eigen::MatrixXd& velocity_constraints);
 
+// Spline
+bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& input_plan, std::vector<geometry_msgs::PoseStamped>& output_plan);
+
 } // namespace my_global_planner
 
 #endif // PATH_FUNC_H

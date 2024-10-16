@@ -5,6 +5,7 @@
 #include "path_func.h"
 #include "boundaries.h"
 #include "constant.h"
+#include "my_global_planner/BSplineSmoothing.h"
 
 namespace my_global_planner {
 
@@ -367,6 +368,7 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::P
 
     return getVelocityProfile(path, curvature, init_velocity, max_vel, max_ax, max_ay);
 }
+
 // ========================================
 // Curvatures
 // ========================================
@@ -518,5 +520,37 @@ Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg
 
     return getCurvatureUsingFiniteDifference(path);
 }
+
+// ========================================
+// B-spline Smoothing Service
+// ========================================
+bool callBSplineSmoothingService(const std::vector<geometry_msgs::PoseStamped>& input_plan, std::vector<geometry_msgs::PoseStamped>& output_plan) {
+    ros::NodeHandle nh;
+    ros::ServiceClient client = nh.serviceClient<my_global_planner::BSplineSmoothing>("/bspline_smoothing_service");
+    my_global_planner::BSplineSmoothing srv;
+
+    // Convert std::vector<geometry_msgs::PoseStamped> to nav_msgs::Path
+    nav_msgs::Path input_plan_path;
+    input_plan_path.header.frame_id = "map";
+    input_plan_path.header.stamp = ros::Time::now();
+    input_plan_path.poses = input_plan;
+
+    srv.request.input_plan = input_plan_path;
+
+    if (!client.call(srv)) {
+        ROS_ERROR("Failed to call B-spline smoothing service.");
+        return false;
+    }
+
+    if (srv.response.output_plan.poses.empty()) {
+        ROS_ERROR("Received an empty B-spline path from the service.");
+        return false;
+    }
+
+    output_plan = srv.response.output_plan.poses;
+    ROS_INFO("Successfully received B-spline path from the service.");
+    return true;
+}
+
 
 } // namespace my_global_planner
