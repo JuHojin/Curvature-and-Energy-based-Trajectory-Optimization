@@ -23,7 +23,7 @@ namespace Constant {
     constexpr double CURVATURE_BOUND_MIN = 0.5 * MAP_RESOLUTION;
     constexpr double CURVATURE_BOUND_DECAY = 0.6;
     constexpr unsigned int MAX_OPT_ITER = 10;
-    constexpr double GAMMA = 0.0;
+    constexpr double GAMMA = 1e-6;
     
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;
@@ -41,7 +41,7 @@ namespace Constant {
     constexpr unsigned char LOCAL_OBSTACLE_INFLATION = 10;
 
     // Spline: B-spline
-    constexpr int SMOOTHING_FACTOR = 0.1;
+    constexpr double SMOOTHING_FACTOR = 0.1;
     constexpr int SPLINE_DEGREE = 3;
     constexpr int NUM_SPLINE_POINTS = 1;
 }

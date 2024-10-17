@@ -20,6 +20,9 @@ ros::Publisher plan_publisher_bnd_R_replan;
 ros::Publisher plan_publisher_opt;
 ros::Publisher optimization_status_publisher;
 
+// Use EPSILON to treat very small changes in travel_time as no change,
+double EPSILON = 1e-6;
+
 // ========================================
 // Main
 // ========================================
@@ -34,19 +37,22 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     int qp_type;
     ros::NodeHandle nh("/");
     nh.param("move_base/QP_type", qp_type, 1);
+    ROS_INFO("============ QP optimizatoin Start ============");
+    if (qp_type == 0) {
+        ROS_INFO("Use uniformSpacing");
+    } else if (qp_type == 1) {
+        ROS_INFO("Use adaptiveSpacing");
+    } else {
+        ROS_ERROR("Invalid QP_type parameter: %d. Expected values: 0 (uniformSpacing), 1 (adaptiveSpacing)", qp_type);
+        return new_path;
+    }
 
     for (int i = 0; i < max_iter; ++i) {
-        ROS_INFO("\n============ Opt. Step [%d] ============", i + 1);
         if (qp_type == 0) {
-            ROS_INFO("Using uniformSpacing for optimization step %d", i + 1);
             path = uniformSpacing(new_path, Constant::UNIFORM_STEP);
         } else if (qp_type == 1) {
-            ROS_INFO("Using adaptiveSpacing for optimization step %d", i + 1);
             path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
-        } else {
-            ROS_ERROR("Invalid QP_type parameter: %d. Expected values: 0 (uniformSpacing), 1 (adaptiveSpacing)", qp_type);
-            return new_path;
-        }   
+        }
 
         Eigen::MatrixXd A = getSystemMatrix(path);
         std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
@@ -198,12 +204,12 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         
         // Get travel time
         double travel_time = getTravelTime(new_path_m, velocity_profile);
-        ROS_INFO("\nOpt. Step [%d] Expected Travel Time: %f", i + 1, travel_time);
+        ROS_INFO("Opt. Step [%d] | Expected Travel Time: %f sec", i + 1, travel_time);
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
-        if (i >= 2 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
-            ROS_INFO("Current travel time is longer than the previous one or is NaN. Reverting to path at step [%d]", i);
+        if (i >= 2 && ( (travel_time + EPSILON) > travel_times[i - 1] || std::isnan(travel_time))) {
+            ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
             // Revert to the previous path
             new_path = path; 
             // Revert to the previous boundaries
@@ -223,6 +229,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     status_msg.data = success_flag;
     optimization_status_publisher.publish(status_msg);
 
+    ROS_INFO("============= QP optimization End =============");
     // the return path is adaptive spaced path
     return new_path;
 }

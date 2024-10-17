@@ -144,7 +144,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
 
     // Minimum curvature planning
     if (!replanning_mode) {
-        ROS_INFO("Normal planning mode.");
+        ROS_INFO("======== Normal planning mode ========");
+        ROS_INFO("Start: (%.3f, %.3f)", start.pose.position.x, start.pose.position.y);
+        ROS_INFO("Goal: (%.3f, %.3f)", goal.pose.position.x, goal.pose.position.y);
         start_ = start;
         goal_ = goal;
         plan.clear();
@@ -178,7 +180,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         }
 
         // Find initial Path: A* Planning
-        ROS_INFO("Find path using A*.");
         basic_planner::AStarPlanner a_star_planner;
         std::vector<geometry_msgs::PoseStamped> a_star_plan;
 
@@ -187,21 +188,25 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         nav_msgs::Path a_star_plan_world = producePathMapToWorld(a_star_plan);
 
         if (a_star_success) {
-            ROS_INFO("A* planning is successful.");
+            ROS_INFO("A* planning is successful");
             publishPath(plan_publisher_a_star, a_star_plan_world);
         } else {
-            ROS_WARN("A* planning failed.");
+            ROS_WARN("A* planning failed");
         }
 
         // Post smoothing
         std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
         nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
         publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
-      
+        ROS_INFO("Post smoothing is successful");
+
+        // Declare plans
         std::vector<geometry_msgs::PoseStamped> final_plan;
         nav_msgs::Path final_plan_world;
         std::vector<geometry_msgs::PoseStamped> uniform_plan;
         nav_msgs::Path uniform_plan_world;
+
+        // Planning based on planner_type
         if (planner_type == 0) {
             // A* only (Last uniform step size)
             uniform_plan = uniformSpacing(post_smooth_plan, Constant::LAST_UNIFORM_STEP);
@@ -256,20 +261,6 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
 
-                // Save final_plan_world.poses to CSV file
-                std::ofstream csv_file("/home/acss/catkin_ws/src/my_global_planner/data/final_plan.csv");
-                if (csv_file.is_open()) {
-                    csv_file << "x,y\n";
-                    for (const auto& pose : final_plan_world.poses) {
-                        csv_file << pose.pose.position.x << ","
-                                 << pose.pose.position.y << "\n";
-                    }
-                    csv_file.close();
-                    ROS_INFO("Final plan saved to CSV file successfully.");
-                } else {
-                    ROS_ERROR("Unable to open file to save final plan.");
-                }
-
                 // Update pin points (based on final_plan)
                 auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
                 my_global_planner::PinPoints pin_points_msg;
@@ -305,7 +296,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     }
     // Replanning
     else {
-        ROS_INFO("Replanning mode.");
+        ROS_INFO("======== Replanning mode ========");
         
         if (received_pin_point_indices_.size() < 5) {
             ROS_ERROR("indices list size is wrong");

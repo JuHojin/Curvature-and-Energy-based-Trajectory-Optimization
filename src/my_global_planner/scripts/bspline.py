@@ -46,7 +46,7 @@ class BsplinePostProcessor:
             pose.pose.orientation.w = 1.0
             bspline_path.poses.append(pose)
 
-        rospy.loginfo("Generated B-spline smoothed path.")
+        # rospy.loginfo("Generated B-spline smoothed path.")
         return BSplineSmoothingResponse(output_plan=bspline_path)
 
 if __name__ == '__main__':
