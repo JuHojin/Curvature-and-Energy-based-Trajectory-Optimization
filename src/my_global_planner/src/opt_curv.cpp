@@ -27,6 +27,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     
     std::vector<Eigen::Vector2d> new_path = path;
     std::vector<double> travel_times;
+    Boundaries current_boundaries;
     Boundaries prev_boundaries;
     bool success_flag;
 
@@ -43,25 +44,24 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             ROS_INFO("Using adaptiveSpacing for optimization step %d", i + 1);
             path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
         } else {
-            ROS_WARN("Invalid QP_type value: %d. Defaulting to adaptiveSpacing.", qp_type);
-            path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
-        }
+            ROS_ERROR("Invalid QP_type parameter: %d. Expected values: 0 (uniformSpacing), 1 (adaptiveSpacing)", qp_type);
+            return new_path;
+        }   
 
         Eigen::MatrixXd A = getSystemMatrix(path);
         std::vector<Eigen::Vector2d> normal_vectors = getNormalVectors(path);
 
         // Boundaries
-        Boundaries Boundaries = getBoundaries(path, normal_vectors, local);
-        prev_boundaries = Boundaries;
-        // for (size_t i = 0; i < Boundaries.left_bnd.distances.size(); ++i) {
-        //     ROS_INFO("Distance[%zu]: %f", i, Boundaries.left_bnd.distances[i]);
-        // }
+        if (i != 0) {
+            prev_boundaries = current_boundaries;
+        }
+        current_boundaries = getBoundaries(path, normal_vectors, local);
 
         // Publish Boundary Lines
         // Normal planning
         if (!local){
-            std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(Boundaries.left_bnd.points);
-            std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(Boundaries.right_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> left_bnd = convertVector2dToPoseStamped(current_boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd = convertVector2dToPoseStamped(current_boundaries.right_bnd.points);
             nav_msgs::Path left_bnd_world = producePathMapToWorld(left_bnd);
             nav_msgs::Path right_bnd_world = producePathMapToWorld(right_bnd);
             publishPath(plan_publisher_bnd_L, left_bnd_world);
@@ -69,8 +69,8 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         }
         // Replanning
         else {
-            std::vector<Eigen::Vector2d> left = Boundaries.left_bnd.points;
-            std::vector<Eigen::Vector2d> right = Boundaries.right_bnd.points;
+            std::vector<Eigen::Vector2d> left = current_boundaries.left_bnd.points;
+            std::vector<Eigen::Vector2d> right = current_boundaries.right_bnd.points;
 
             // 1. Local costmap (map) -> Local costmap (world)
             for (auto& point : left) {
@@ -163,9 +163,9 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         // Select curvature bound method (constant/ exponential decay)
         // double curvature_bound = CURVATURE_BOUND;
         double curvature_bound = (Constant::CURVATURE_BOUND_MAX - Constant::CURVATURE_BOUND_MIN) * std::exp(-i * Constant::CURVATURE_BOUND_DECAY) + Constant::CURVATURE_BOUND_MIN;
-        
+
         // Alpha calculation
-        auto result = getAlphaMinCurvature(path, Boundaries.left_bnd.distances, Boundaries.right_bnd.distances, normal_vectors, A, curvature_bound, start_angle, end_angle, Constant::GAMMA);
+        auto result = getAlphaMinCurvature(path, current_boundaries.left_bnd.distances, current_boundaries.right_bnd.distances, normal_vectors, A, curvature_bound, start_angle, end_angle, Constant::GAMMA);
         Eigen::VectorXd alpha = result.first;
         int success = result.second;
 
@@ -174,10 +174,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             std::vector<geometry_msgs::PoseStamped> new_path_tmp = convertVector2dToPoseStamped(new_path);
             nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
             publishPath(plan_publisher_opt, new_path_world);
-            
         } else {
             ROS_INFO("Optimization Failed at step [%d]", i + 1);
             new_path = path;
+            success_flag = false;
             // Reverting to the previous boundaries
             std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
             std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
@@ -185,17 +185,11 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
             publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
             publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
-            
-            success_flag = false;
             break;
         }
 
         // Convert the path from px to meter for curvature calculation, velocity profile generation and travel time calculation
-        std::vector<Eigen::Vector2d> new_path_m = new_path;
-        for (auto& point : new_path_m) {
-            point.x() *= Constant::MAP_RESOLUTION;
-            point.y() *= Constant::MAP_RESOLUTION;
-        }
+        std::vector<Eigen::Vector2d> new_path_m = convertPx2Meter(new_path);
 
         // Get curvature and velocity profile
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(new_path_m);
@@ -1014,6 +1008,16 @@ double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::Vect
     }
 
     return total_time;
+}
+
+std::vector<Eigen::Vector2d> convertPx2Meter(const std::vector<Eigen::Vector2d>& path) {
+    std::vector<Eigen::Vector2d> new_path = path;
+    for (auto& point : new_path) {
+        point.x() *= Constant::MAP_RESOLUTION;
+        point.y() *= Constant::MAP_RESOLUTION;
+    }
+
+    return new_path;
 }
 
 } // namespace my_global_planner

@@ -21,6 +21,7 @@ std::vector<Eigen::Vector2d> getNormalVectors(const std::vector<Eigen::Vector2d>
 
 Eigen::VectorXd getCurvatureUsingSpline(const std::vector<Eigen::Vector2d>& path, const Eigen::MatrixXd& A, double start_angle, double end_angle);
 double getTravelTime(const std::vector<Eigen::Vector2d>& path, const Eigen::VectorXd& velocity_profile);
+std::vector<Eigen::Vector2d> convertPx2Meter(const std::vector<Eigen::Vector2d>& path);
 
 // Boundaries
 Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::vector<Eigen::Vector2d>& normal_vectors, bool use_local_costmap);
