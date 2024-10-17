@@ -16,7 +16,7 @@ TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
 OPT_SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/opt_success.csv')
 CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
-EPSILON = 0.1
+START_EPSILON = 0.1
 
 amcl_position = None
 plan_received = False
@@ -57,7 +57,7 @@ def call_reset_racecar_service(x, y):
 
         response = rest_racecar(request)
         if response.success:
-            print("Car position reset: x = {}, y = {}".format(x, y))
+            print("Start: x = {}, y = {}".format(x, y))
         else:
             rospy.logerr("Failed to reset car position")
     
@@ -82,7 +82,7 @@ def publish_goal(x, y):
 
     rospy.sleep(1)
     pub.publish(goal_msg)
-    print("Goal published at: x = {}, y = {}".format(x, y))
+    print("Goal: x = {}, y = {}".format(x, y))
 
 def publish_initialpose(x, y):
     pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
@@ -115,7 +115,6 @@ def cancel_move_base_goal():
     pub = rospy.Publisher('/move_base/cancel', GoalID, queue_size=1)
     rospy.sleep(1)
     pub.publish(GoalID())
-    rospy.loginfo("Cancelled previous move_base goal")
 
 def parse_constants_from_h_file(file_path):
     if not os.path.exists(file_path):
@@ -205,10 +204,10 @@ def main():
 
     # Monte Carlo Simulation
     for i in range(len(start_points)):
-        print("""================================================\nplanner: {}, idx: {}""".format(path_planner, i))
-
-        # Auto-control disable
-        rospy.set_param('/auto_control_active', False)
+        print("""================================================\nplanner: {}, iteration: {}""".format(path_planner, i))
+        
+        # Delete previous goal
+        cancel_move_base_goal()
         
         start_x, start_y = start_points[i]
         goal_x, goal_y = goal_points[i]
@@ -223,7 +222,7 @@ def main():
         while not rospy.is_shutdown():
             if amcl_position is not None:
                 distance = ((amcl_position.x - start_x) ** 2 + (amcl_position.y - start_y) ** 2) ** 0.5
-                if distance < EPSILON:
+                if distance < START_EPSILON:
                     break
             rate.sleep()
 
@@ -234,7 +233,6 @@ def main():
         # Wait for planning to complete
         global plan_received
         while not rospy.is_shutdown():
-            print("plan_received = {}".format(plan_received))
             if plan_received:
                 rospy.set_param('/auto_control_active', True)
                 start_time = rospy.Time.now()
@@ -243,23 +241,22 @@ def main():
 
         # Wait for car to arrive at goal
         while not rospy.is_shutdown():
-            if amcl_position is not None:
-                distance = ((amcl_position.x - goal_x) ** 2 + (amcl_position.y - goal_y) ** 2) ** 0.5
-                if distance < 1:
-                    print(distance)
-                if distance < 0.7:
-                    cancel_move_base_goal()
-                    end_time = rospy.Time.now()
-                    travel_time = (end_time - start_time).to_sec()
-                    travel_time_list.append(travel_time)
-                    print("Travel Time: {}".format(travel_time))
+            auto_control_active = rospy.get_param('/auto_control_active')
+            if not auto_control_active:
+                # Travel time calculation
+                end_time = rospy.Time.now()
+                travel_time = (end_time - start_time).to_sec()
+                travel_time_list.append(travel_time)
+                print("Travel Time: {}".format(travel_time))
+                
+                # Path planning calculation time
+                print("Calculation Time: {}".format(calculation_time_list[i]))
 
-                    print("Calculation Time: {}".format(calculation_time_list[i]))
-
-                    if path_planner.startswith('QP'):
-                        optimization_success_list.append(optimization_success)
-                        print("Optimization Success: {}".format(optimization_success))
-                    break
+                # Optimization success
+                if path_planner.startswith('QP'):
+                    optimization_success_list.append(optimization_success)
+                    print("Optimization Success: {}".format(optimization_success))
+                break
             rate.sleep()
 
         plan_received = False

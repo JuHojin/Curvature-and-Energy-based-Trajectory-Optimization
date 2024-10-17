@@ -16,6 +16,7 @@ from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PointStamped
 
 WHEEL_BASE = 0.325
+STOP_EPSILON = 0.05
 
 def normalize_angle(angle):
     if angle > math.pi:
@@ -127,7 +128,13 @@ class AutoController():
 
         if not self.x_list or not self.y_list:
             rospy.logwarn("Path is empty. Waiting for valid path...")
-            return    
+            return
+        else:
+            rospy.loginfo("=== Control Start ===")
+            rospy.loginfo("Start ({:.3f},{:.3f})".format(self.x_list[0], self.y_list[0]))
+            rospy.loginfo("End ({:.3f},{:.3f})".format(self.x_list[-1], self.y_list[-1])) 
+            euclidean_distance = np.sqrt((self.x_list[-1] - self.x_list[0])**2 + (self.y_list[-1] - self.y_list[0])**2)
+            rospy.loginfo("Euclidean distance: {:.3f}".format(euclidean_distance))
 
     def callback_odom(self, msg):
         self.ego_x = msg.pose.pose.position.x
@@ -198,8 +205,7 @@ def main():
                 auto_control.rate.sleep()
                 continue
 
-
-            if not hasattr(auto_control, 'x_list') or not auto_control.x_list:
+            if not hasattr(auto_control, 'x_list') or not auto_control.x_list or not hasattr(auto_control, 'y_list') or not auto_control.y_list:
                 # rospy.loginfo("Waiting for path data...")
                 auto_control.rate.sleep()
                 continue
@@ -218,7 +224,6 @@ def main():
             auto_control.wpt_look_ahead = int(0.5 * ego_vx)
             if (auto_control.wpt_look_ahead < 1):
                 auto_control.wpt_look_ahead = 1
-            print('look ahead {}'.format(auto_control.wpt_look_ahead))
 
             # Lateral error calculation (cross-track error, yaw error)
             error_y, error_yaw, near_idx, look_ahead_idx = calc_error(ego_x, ego_y, ego_yaw, wpts_x, wpts_y, lookahead=auto_control.wpt_look_ahead)
@@ -252,6 +257,17 @@ def main():
 
             # rospy.loginfo("Commands: (steer=%.3f, accel=%.3f). Errors: (CrossTrack=%.3f, Yaw=%.3f, Speed=%.3f). Ave. Errors ((CrossTrack=%.3f, Speed=%.3f)) ." %(steer_cmd, throttle_cmd, error_y, error_yaw, error_v, np.mean(error_y_data), np.mean(error_v_data)))
             # rospy.loginfo("Steering command: %.3f, Speed command: %.3f" %(steer_cmd, speed_cmd))
+
+            if np.sqrt((ego_x - wpts_x[-1])**2 + (ego_y - wpts_y[-1])**2) < STOP_EPSILON:
+                rospy.loginfo("==== Control End ====")
+                rospy.set_param('/auto_control_active', False)
+                auto_control.x_list = []
+                auto_control.y_list = []
+                auto_control.publish_command(0.0, 0.0)
+                while not rospy.is_shutdown():
+                    if hasattr(auto_control, 'x_list') and auto_control.x_list and hasattr(auto_control, 'y_list') and auto_control.y_list:
+                        break
+                    auto_control.rate.sleep()
 
             auto_control.rate.sleep()
      
