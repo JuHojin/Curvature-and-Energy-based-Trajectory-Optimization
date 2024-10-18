@@ -35,6 +35,8 @@ double get_min_obstacle_distance(Eigen::Vector2d start, unsigned int searching_r
 // Velocity profile
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay);
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfileQuad(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay, double jerk);
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfileCubic(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay, double jerk);
 void showVelocityProfile(const Eigen::VectorXd& velocity_profile, const Eigen::MatrixXd& velocity_constraints);
 
 // Spline
