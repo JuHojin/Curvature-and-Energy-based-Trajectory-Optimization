@@ -250,13 +250,11 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 // Final plan - make opt_path uniform
                 std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
                 
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                // TODO: B-spine smoothing to last_opt_plan
+                // B-spine smoothing to last_opt_plan
                 if (!callBSplineSmoothingService(last_opt_plan, final_plan, Constant::SMOOTHING_FACTOR, Constant::SPLINE_DEGREE, Constant::NUM_SPLINE_POINTS)) {
                     return false;
                 }
 
-                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                 final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);

@@ -13,8 +13,9 @@ GOAL_MAX_X = 17.0
 GOAL_MIN_Y = -9.0
 GOAL_MAX_Y = 9.0
 
-DATA_DIR = '../data'
-POINTS_FILE = os.path.join(DATA_DIR, 'start_goal_pair.csv')
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, '../data')
+POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 
 def get_random_position(min_x, max_x, min_y, max_y):
     return random.uniform(min_x, max_x), random.uniform(min_y, max_y)

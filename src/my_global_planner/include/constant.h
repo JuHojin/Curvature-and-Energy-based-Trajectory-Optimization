@@ -43,7 +43,7 @@ namespace Constant {
     // Spline: B-spline
     constexpr double SMOOTHING_FACTOR = 0.1;
     constexpr int SPLINE_DEGREE = 3;
-    constexpr int NUM_SPLINE_POINTS = 1;
+    constexpr int NUM_SPLINE_POINTS = 10;
 }
 
 #endif // CONSTANT_H

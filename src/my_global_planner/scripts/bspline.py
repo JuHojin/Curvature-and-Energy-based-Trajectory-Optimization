@@ -12,9 +12,9 @@ class BsplinePostProcessor:
         self.bspline_service = rospy.Service('/bspline_smoothing_service', BSplineSmoothing, self.handle_bspline_request)
 
         # Get smoothing parameters from ROS parameters
-        self.smoothing_factor = rospy.get_param('~smoothing_factor', 30)
-        self.spline_degree = rospy.get_param('~spline_degree', 3)
-        self.num_splice_points = rospy.get_param('~num_splice_points', 10)
+        self.smoothing_factor = rospy.get_param('/bspline_smoothing_service/smoothing_factor', 30)
+        self.spline_degree = rospy.get_param('/bspline_smoothing_service/spline_degree', 3)
+        self.num_splice_points = rospy.get_param('/bspline_smoothing_service/num_splice_points', 10)
         
     def handle_bspline_request(self, req):
         msg = req.input_plan
@@ -23,6 +23,10 @@ class BsplinePostProcessor:
             rospy.logwarn("Received empty path for B-spline smoothing.")
             return BSplineSmoothingResponse(Path())
 
+        # print("smoothing_factor: ", self.smoothing_factor)
+        # print("spline_degree: ", self.spline_degree)
+        # print("num_splice_points: ", self.num_splice_points)
+        
         x = np.zeros(n)
         y = np.zeros(n)
 
@@ -36,7 +40,8 @@ class BsplinePostProcessor:
 
         bspline_path = Path()
         bspline_path.header = msg.header
-
+        bspline_path.poses = []
+        
         for i in range(len(x_smooth)):
             pose = PoseStamped()
             pose.header = msg.header

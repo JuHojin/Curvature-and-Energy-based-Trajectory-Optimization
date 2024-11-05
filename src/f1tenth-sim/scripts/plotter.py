@@ -228,7 +228,7 @@ class StateAndVelocityProfilePlotter:
                 ax.legend()
                 ax.grid(True)
 
-            plt.pause(0.1)
+            plt.pause(1)
     
     def run(self):
         # Start a thread to consistently update data
