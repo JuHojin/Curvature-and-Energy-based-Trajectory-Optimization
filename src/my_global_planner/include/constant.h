@@ -9,7 +9,7 @@ namespace Constant {
     // Boundary
     constexpr unsigned int DEV_MAX = 15;
     constexpr unsigned int DEV_DOT = 1;
-    constexpr unsigned int DEV_EPSILON = 1;
+    constexpr unsigned int DEV_EPSILON = 1; // trimming parameter when boundaries are crossed
 
     // Spacing
     constexpr double UNIFORM_STEP = 5;

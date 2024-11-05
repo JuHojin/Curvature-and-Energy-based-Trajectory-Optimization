@@ -6,6 +6,7 @@ import csv
 import os
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from ackermann_msgs.msg import AckermannDrive
 from nav_msgs.msg import Path
 from std_msgs.msg import Float64, Bool
 from actionlib_msgs.msg import GoalID
@@ -14,16 +15,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
 OPT_SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/opt_success.csv')
+SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/success.csv')
 CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 START_EPSILON = 0.1
 
+pub_command = rospy.Publisher('/car_1/command', AckermannDrive, queue_size = 1)
 amcl_position = None
 plan_received = False
 planning_calculation_time = 0.0
 optimization_success = False
 calculation_time_list = []
 optimization_success_list = []
+success_list = []
 
 def amcl_pose_callback(msg):
     global amcl_position
@@ -206,6 +210,10 @@ def main():
     for i in range(len(start_points)):
         print("""================================================\nplanner: {}, iteration: {}""".format(path_planner, i))
         
+        # Reset ROS parameter - count_plan
+        rospy.set_param('/move_base/count_plan', 0)
+        rospy.loginfo("Set ROS parameter /move_base/count_plan to: 0")
+        
         # Delete previous goal
         cancel_move_base_goal()
         
@@ -240,31 +248,54 @@ def main():
             rate.sleep()
 
         # Wait for car to arrive at goal
+        successful_arrival = False
         while not rospy.is_shutdown():
             auto_control_active = rospy.get_param('/auto_control_active')
+            count_plan = rospy.get_param('/move_base/count_plan')
+            if count_plan == 1:
+                successful_arrival = True
+            elif count_plan > 1:
+                travel_time = None
+                print("Travel Time: {}".format(travel_time))
+                # Car did not reach the goal successfully
+                success_list.append(successful_arrival)
+                break
+                
             if not auto_control_active:
                 # Travel time calculation
                 end_time = rospy.Time.now()
                 travel_time = (end_time - start_time).to_sec()
                 travel_time_list.append(travel_time)
                 print("Travel Time: {}".format(travel_time))
-                
-                # Path planning calculation time
-                print("Calculation Time: {}".format(calculation_time_list[i]))
 
-                # Optimization success
-                if path_planner.startswith('QP'):
-                    optimization_success_list.append(optimization_success)
-                    print("Optimization Success: {}".format(optimization_success))
+                # Car reached the goal successfully
+                success_list.append(successful_arrival)
                 break
             rate.sleep()
 
+        # Stop the car
+        command = AckermannDrive()
+        command.steering_angle = 0
+        command.speed = 0
+        pub_command.publish(command)
+        rospy.set_param('/auto_control_active', False)
+        
+        # Optimization success
+        if path_planner.startswith('QP'):
+            optimization_success_list.append(optimization_success)
+            print("Optimization Success: {}".format(optimization_success))
+
+        # Path planning calculation time
+        print("Calculation Time: {}".format(calculation_time_list[i]))
+        
+        print("Arrived at Goal Successfuly: {}".format(successful_arrival))
+        
         plan_received = False
-        print("Racecar arrived at the goal\n")
-        # rospy.sleep(2)
+        rospy.sleep(1.5)
 
     save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
     save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
+    save_data_to_csv(SUCCESS_FILE, path_planner, success_list)
     if path_planner.startswith('QP'):
         save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
 

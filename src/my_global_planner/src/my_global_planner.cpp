@@ -72,6 +72,9 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     // Service
     replan_service_ = nh.advertiseService("replanning_service", &MyGlobalPlanner::handleReplanningRequest, this);
 
+    // Parameter
+    nh.setParam("/move_base/count_plan", 0);
+
     ROS_INFO("MyGlobalPlanner initialized successfully.");
 }
 
@@ -131,16 +134,22 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
     }
 
     int planner_type;
-    ros::NodeHandle nh("~");
+    ros::NodeHandle nh;
     if (!nh.getParam("/move_base/planner_type", planner_type)) {
         ROS_ERROR("planner_type parameter not set");
         return false;
     }
-
+    
     if (planner_type < 0 || planner_type > 2) {
         ROS_ERROR("Invalid planner_type parameter: %d. Expected values: 0 (A*), 1 (B-spline), 2 (QP family)", planner_type);
         return false;
     }
+    
+    // Count number of plans every monte carlo iteration
+    int count_plan;
+    nh.getParam("/move_base/count_plan", count_plan);
+    count_plan += 1;
+    nh.setParam("/move_base/count_plan", count_plan);
 
     // Minimum curvature planning
     if (!replanning_mode) {
