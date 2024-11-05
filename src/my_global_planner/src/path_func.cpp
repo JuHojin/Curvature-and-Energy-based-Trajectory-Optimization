@@ -355,14 +355,6 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const std::vector
     return std::make_pair(velocity_profile, velocity_constraints);
 }
 
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfileQuad(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay, double jerk) {
-    // TODO: get velocity profile using quadratic method
-}
-
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfileCubic(const std::vector<Eigen::Vector2d> path, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay, double jerk) {
-    // TODO: get velocity profile using cubic method
-}
-
 std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay) {
     // Convert nav_msgs::Path to std::vector<Eigen::Vector2d>
     size_t len_path = path_msg.poses.size();
@@ -375,24 +367,6 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::P
     }
 
     return getVelocityProfile(path, curvature, init_velocity, max_vel, max_ax, max_ay);
-}
-
-std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::Path& path_msg, const Eigen::VectorXd& curvature, double init_velocity, double max_vel, double max_ax, double max_ay, double jerk, int dim) {
-    // Convert nav_msgs::Path to std::vector<Eigen::Vector2d>
-    size_t len_path = path_msg.poses.size();
-    std::vector<Eigen::Vector2d> path(len_path);
-
-    for (size_t i = 0; i < len_path; ++i) {
-        double x = path_msg.poses[i].pose.position.x;
-        double y = path_msg.poses[i].pose.position.y;
-        path[i] = Eigen::Vector2d(x, y);
-    }
-
-    if (dim == 2) {
-        return getVelocityProfileQuad(path, curvature, init_velocity, max_vel, max_ax, max_ay, jerk);
-    } else if (dim == 3) {
-        return getVelocityProfileCubic(path, curvature, init_velocity, max_vel, max_ax, max_ay, jerk);
-    }
 }
 
 // ========================================
