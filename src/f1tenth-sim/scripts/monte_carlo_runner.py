@@ -12,15 +12,16 @@ from std_msgs.msg import Float64, Bool
 from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
-TRAVEL_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/travel_time.csv')
-OPT_SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/opt_success.csv')
-SUCCESS_FILE = os.path.join(SCRIPT_DIR, '../data/success.csv')
-CALCULATION_TIME_FILE = os.path.join(SCRIPT_DIR, '../data/calculation_time.csv')
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+POINTS_FILE = os.path.join(PARENT_DIR, 'data', 'start_goal_pair.csv')
+TRAVEL_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'travel_time.csv')
+OPT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'opt_success.csv')
+SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'success.csv')
+CALCULATION_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 START_EPSILON = 0.1
 
-pub_command = rospy.Publisher('/car_1/command', AckermannDrive, queue_size = 1)
+pub_command = rospy.Publisher('/car_1/command', AckermannDrive, queue_size=1)
 amcl_position = None
 plan_received = False
 planning_calculation_time = 0.0
@@ -41,7 +42,6 @@ def latest_plan_callback(msg):
 def planning_calculation_time_callback(msg):
     global planning_calculation_time
     planning_calculation_time = msg.data
-    calculation_time_list.append(planning_calculation_time)
 
 def optimization_status_callback(msg):
     global optimization_success
@@ -161,19 +161,48 @@ def load_start_goal_points(filename):
         rospy.signal_shutdown("Required start-goal points file not found")
         return None, None
     
-def save_data_to_csv(filename, path_planner, data_list):
+def load_existing_data(filename, path_planner):
     if os.path.exists(filename) and os.path.getsize(filename) != 0:
-        df = pd.read_csv(filename)
+        try:
+            df = pd.read_csv(filename, usecols=[path_planner])
+            return df[path_planner].dropna().tolist()
+        except ValueError:
+            print("Column {} not found in {}, returning empty list.".format(path_planner, filename))
+            return []
     else:
-        df = pd.DataFrame()
-    
-    df[path_planner] = pd.Series(data_list)
+        return []
+
+
+def save_data_to_csv(filename, path_planner, data_list):
+    if not os.path.exists(filename) or os.path.getsize(filename) == 0:
+        df = pd.DataFrame({path_planner: data_list})
+    else:
+        df = pd.read_csv(filename)
+
+        if path_planner in df.columns:
+            existing_length = len(df[path_planner])
+            new_length = len(data_list)
+
+            if new_length > existing_length:
+                df.loc[:existing_length - 1, path_planner] = data_list[:existing_length]
+                df = pd.concat([df, pd.DataFrame({path_planner: data_list[existing_length:]})], ignore_index=True, sort=False)
+            else:
+                df.loc[:new_length - 1, path_planner] = data_list
+        else:
+            df[path_planner] = pd.Series(data_list)
+
     df.to_csv(filename, index=False)
-    print("Saved travel times of {} to {}".format(path_planner, filename))
+
+def save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, optimization_success_list=None):
+    save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
+    save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
+    save_data_to_csv(SUCCESS_FILE, path_planner, success_list)
+    if path_planner.startswith('QP') and optimization_success_list is not None:
+        save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
+    print("Data saved successfully")
 
 def main():
     rospy.init_node('monte_carlo_runner', anonymous=True)
-
 
     # Initialize
     constants = parse_constants_from_h_file(CONSTANT_FILE)
@@ -183,6 +212,34 @@ def main():
         gamma = constants.get('GAMMA')
         if not (gamma == 0 or gamma == 0.0):
             path_planner += '_E_' + str(gamma)
+
+    # Load existing data for the specified path planner
+    travel_time_list = load_existing_data(TRAVEL_TIME_FILE, path_planner)
+    calculation_time_list = load_existing_data(CALCULATION_TIME_FILE, path_planner)
+    success_list = load_existing_data(SUCCESS_FILE, path_planner)
+    optimization_success_list = load_existing_data(OPT_SUCCESS_FILE, path_planner) if path_planner.startswith('QP') else []
+
+    # Set starting index based on the minimum length of existing lists
+    if path_planner.startswith('QP'):
+        min_length = min(
+                len(pd.Series(travel_time_list).dropna()),
+                len(pd.Series(calculation_time_list).dropna()),
+                len(pd.Series(success_list).dropna()),
+                len(pd.Series(optimization_success_list).dropna())
+            ) - 1
+    else:
+        min_length = min(
+                len(pd.Series(travel_time_list).dropna()),
+                len(pd.Series(calculation_time_list).dropna()),
+                len(pd.Series(success_list).dropna())
+        ) - 1
+        
+    resume_idx = max(0, min_length)
+    travel_time_list = travel_time_list[:resume_idx]
+    calculation_time_list = calculation_time_list[:resume_idx]
+    success_list = success_list[:resume_idx]
+    optimization_success_list = optimization_success_list[:resume_idx]
+    rospy.loginfo("Resuming from index {}".format(resume_idx))
     
     # Subscribers
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
@@ -207,12 +264,8 @@ def main():
         return
 
     # Monte Carlo Simulation
-    for i in range(len(start_points)):
-        print("""================================================\nplanner: {}, iteration: {}""".format(path_planner, i))
-        
-        # Reset ROS parameter - count_plan
-        rospy.set_param('/move_base/count_plan', 0)
-        rospy.loginfo("Set ROS parameter /move_base/count_plan to: 0")
+    for i in range(resume_idx, len(start_points)):
+        print("""================================================\nplanner: {}, iteration: {}""".format(path_planner, i+1))
         
         # Delete previous goal
         cancel_move_base_goal()
@@ -233,7 +286,11 @@ def main():
                 if distance < START_EPSILON:
                     break
             rate.sleep()
-
+        
+        # Reset ROS parameter - count_plan
+        rospy.set_param('/move_base/count_plan', 0)
+        rospy.loginfo("Set ROS parameter /move_base/count_plan to: 0")
+        
         # Set goal point
         publish_goal(goal_x, goal_y)
         rospy.sleep(1)
@@ -246,18 +303,21 @@ def main():
                 start_time = rospy.Time.now()
                 break
             rate.sleep()
-
+        
         # Wait for car to arrive at goal
         successful_arrival = False
+        rate = rospy.Rate(100)
         while not rospy.is_shutdown():
             auto_control_active = rospy.get_param('/auto_control_active')
             count_plan = rospy.get_param('/move_base/count_plan')
             if count_plan == 1:
                 successful_arrival = True
             elif count_plan > 1:
-                travel_time = None
+                travel_time = -1
+                travel_time_list.append(travel_time)
                 print("Travel Time: {}".format(travel_time))
                 # Car did not reach the goal successfully
+                successful_arrival = False
                 success_list.append(successful_arrival)
                 break
                 
@@ -285,19 +345,15 @@ def main():
             optimization_success_list.append(optimization_success)
             print("Optimization Success: {}".format(optimization_success))
 
-        # Path planning calculation time
+        calculation_time_list.append(planning_calculation_time)
         print("Calculation Time: {}".format(calculation_time_list[i]))
-        
-        print("Arrived at Goal Successfuly: {}".format(successful_arrival))
+        print("Arrived at Goal Successfully: {}".format(successful_arrival))
         
         plan_received = False
         rospy.sleep(1.5)
 
-    save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
-    save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
-    save_data_to_csv(SUCCESS_FILE, path_planner, success_list)
-    if path_planner.startswith('QP'):
-        save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
+        # Save data after each iteration
+        save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, optimization_success_list)
 
 if __name__ == "__main__":
     try:

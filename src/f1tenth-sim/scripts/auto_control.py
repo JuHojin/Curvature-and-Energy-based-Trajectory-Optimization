@@ -16,7 +16,7 @@ from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PointStamped
 
 WHEEL_BASE = 0.325
-STOP_EPSILON = 0.05
+STOP_EPSILON = 0.1
 
 def normalize_angle(angle):
     if angle > math.pi:
@@ -31,6 +31,10 @@ def find_nearest_point(ego_x, ego_y, x_list, y_list):
     x_arr = np.array(x_list)
     y_arr = np.array(y_list)
 
+    min_length = min(len(x_arr), len(y_arr))
+    x_arr = x_arr[:min_length]
+    y_arr = y_arr[:min_length]
+    
     distances = np.sqrt((x_arr - ego_x)**2 + (y_arr - ego_y)**2)
 
     near_idx = np.argmin(distances)

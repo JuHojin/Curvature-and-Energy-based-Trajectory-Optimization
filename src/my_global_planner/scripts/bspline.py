@@ -10,13 +10,13 @@ class BsplinePostProcessor:
     def __init__(self):
         # Set up the B-spline smoothing service
         self.bspline_service = rospy.Service('/bspline_smoothing_service', BSplineSmoothing, self.handle_bspline_request)
-
+        
+    def handle_bspline_request(self, req):
         # Get smoothing parameters from ROS parameters
         self.smoothing_factor = rospy.get_param('/bspline_smoothing_service/smoothing_factor', 30)
         self.spline_degree = rospy.get_param('/bspline_smoothing_service/spline_degree', 3)
         self.num_splice_points = rospy.get_param('/bspline_smoothing_service/num_splice_points', 10)
         
-    def handle_bspline_request(self, req):
         msg = req.input_plan
         n = len(msg.poses)
         if n == 0:

@@ -1,6 +1,6 @@
 <launch>
     <!-- path_planner: Default, B_spline, QP (Default: A*)-->
-    <arg name="path_planner" default="QP"/>
+    <arg name="path_planner" default="B_spline"/>
     
     <!-- QP type: uniform: 0, adaptive: 1 -->
     <rosparam param="move_base/QP_type"> 1 </rosparam>
@@ -9,9 +9,9 @@
         <param name="car_name" value="car_1"/>
     </node>
 
-    <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/smoothing_factor" value="0.3"/> smoothing factor
+    <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/smoothing_factor" value="100"/>  <!-- smoothing factor -->
     <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/spline_degree" value="3"/>      <!-- spline degree -->
-    <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/num_splice_points" value="1"/>  <!-- number of splice points -->
+    <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/num_splice_points" value="10"/>  <!-- number of splice points -->
 
     <node pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
         <param name="path_planner" value="$(arg path_planner)"/>
