@@ -19,6 +19,9 @@ ros::Publisher plan_publisher_bnd_L_replan;
 ros::Publisher plan_publisher_bnd_R_replan;
 ros::Publisher plan_publisher_opt;
 ros::Publisher optimization_status_publisher;
+ros::Publisher travel_time_publisher;
+ros::Publisher curvature_sums_publisher;
+ros::Publisher curvature_peaks_publisher;
 
 // Use EPSILON to treat very small changes in travel_time as no change,
 double EPSILON = 1e-6;
@@ -30,6 +33,8 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     
     std::vector<Eigen::Vector2d> new_path = path;
     std::vector<double> travel_times;
+    std::vector<double> curvature_sums;
+    std::vector<double> curvature_peaks;
     Boundaries current_boundaries;
     Boundaries prev_boundaries;
     bool success_flag;
@@ -201,6 +206,14 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(new_path_m);
         auto velocity_result = getVelocityProfile(new_path_m, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         Eigen::VectorXd velocity_profile = velocity_result.first;
+
+        double curvature_squared_sum = curvature.squaredNorm();
+        ROS_INFO("Opt. Step [%d] | Sum of Squared Curvature: %f", i + 1, curvature_squared_sum);
+        curvature_sums.push_back(curvature_squared_sum);
+
+        double max_curvature = curvature.cwiseAbs().maxCoeff();
+        ROS_INFO("Opt. Step [%d] | Max Curvature: %f", i + 1, max_curvature);
+        curvature_peaks.push_back(max_curvature);
         
         // Get travel time
         double travel_time = getTravelTime(new_path_m, velocity_profile);
@@ -228,6 +241,12 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     std_msgs::Bool status_msg;
     status_msg.data = success_flag;
     optimization_status_publisher.publish(status_msg);
+
+    publishTravelTimes(travel_time_publisher, travel_times);
+    publishCurvatureSums(curvature_sums_publisher, curvature_sums);
+    publishCurvaturePeaks(curvature_peaks_publisher, curvature_peaks);
+
+
 
     ROS_INFO("============= QP optimization End =============");
     // the return path is adaptive spaced path

@@ -64,6 +64,9 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     planning_calculation_time_publisher = private_nh.advertise<std_msgs::Float64>("planning_calculation_time", 1);
     curvature_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature", 1);
     optimization_status_publisher = private_nh.advertise<std_msgs::Bool>("optimization_status", 1);
+    travel_time_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("travel_times", 1);
+    curvature_sums_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_sums", 1);
+    curvature_peaks_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_peaks", 1);
 
     // Subscriber
     ros::NodeHandle nh;
@@ -648,6 +651,30 @@ void publishCurvature(const ros::Publisher& publisher, const Eigen::VectorXd& cu
         curvature_msg.data.push_back(curvatures[i]);
     }
     publisher.publish(curvature_msg);
+}
+
+void publishTravelTimes(const ros::Publisher& publisher, const std::vector<double>& travel_times){
+    std_msgs::Float64MultiArray msg;
+    for (const double& time : travel_times) {
+        msg.data.push_back(time);
+    }
+    publisher.publish(msg);
+}
+
+void publishCurvatureSums(const ros::Publisher& publisher, const std::vector<double>& curvature_sums) {
+    std_msgs::Float64MultiArray curvature_sums_msg;
+    for (const auto& sum : curvature_sums) {
+        curvature_sums_msg.data.push_back(sum);
+    }
+    publisher.publish(curvature_sums_msg);
+}
+
+void publishCurvaturePeaks(const ros::Publisher& publisher, const std::vector<double>& curvature_peaks) {
+    std_msgs::Float64MultiArray curvature_peaks_msg;
+    for (const auto& peak : curvature_peaks) {
+        curvature_peaks_msg.data.push_back(peak);
+    }
+    publisher.publish(curvature_peaks_msg);
 }
 
 // ========================================

@@ -36,11 +36,18 @@ extern ros::Publisher plan_publisher_bnd_L_replan;
 extern ros::Publisher plan_publisher_bnd_R_replan;
 extern ros::Publisher plan_publisher_opt;
 extern ros::Publisher optimization_status_publisher;
+extern ros::Publisher travel_time_publisher;
+extern ros::Publisher curvature_sums_publisher;
+extern ros::Publisher curvature_peaks_publisher;
+
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
 void publishVelocityProfile(const ros::Publisher& publisher, const Eigen::VectorXd& velocity_profile);
 void publishVelocityConstraints(const ros::Publisher& publisher, const Eigen::MatrixXd& velocity_constraints);
 void publishCurvature(const ros::Publisher& publisher, const Eigen::VectorXd& curvatures);
+void publishTravelTimes(const ros::Publisher& publisher, const std::vector<double>& travel_times);
+void publishCurvatureSums(const ros::Publisher& publisher, const std::vector<double>& curvature_sums);
+void publishCurvaturePeaks(const ros::Publisher& publisher, const std::vector<double>& curvature_peaks);
 
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path);
 std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geometry_msgs::PoseArray& opt_pin_point_list, const std::vector<geometry_msgs::PoseStamped>& final_plan);
