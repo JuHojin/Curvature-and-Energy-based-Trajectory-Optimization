@@ -868,7 +868,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     // Use OSQP settings as usual for dense matrix optimization
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     osqp_set_default_settings(settings);
-    settings->rho = 0.1;
+    settings->rho = 0.5;
     settings->alpha = 1.6;
     settings->verbose = 0;
     settings->warm_start = 1;

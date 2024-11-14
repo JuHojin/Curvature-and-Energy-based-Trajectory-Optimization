@@ -1,31 +1,31 @@
 #!/usr/bin/env python
 import csv
-import random
 import os
 
-START_MIN_X = -17.0
-START_MAX_X = -14.0
+# 고정된 x 좌표
+START_X = -16.0
+GOAL_X = 16.0
+
+# y 좌표의 범위와 분할 개수
 START_MIN_Y = -9.0
 START_MAX_Y = 9.0
-
-GOAL_MIN_X = 14.0
-GOAL_MAX_X = 17.0
 GOAL_MIN_Y = -9.0
 GOAL_MAX_Y = 9.0
+NUM_DIVISIONS = 15
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, '../data')
 POINTS_FILE = os.path.join(SCRIPT_DIR, '../data/start_goal_pair.csv')
 
-def get_random_position(min_x, max_x, min_y, max_y):
-    return random.uniform(min_x, max_x), random.uniform(min_y, max_y)
-
-def generate_start_goal_points(iterations):
+def generate_start_goal_points(num_divisions):
     points = []
-    for _ in range(iterations):
-        start_x, start_y = get_random_position(START_MIN_X, START_MAX_X, START_MIN_Y, START_MAX_Y)
-        goal_x, goal_y = get_random_position(GOAL_MIN_X, GOAL_MAX_X, GOAL_MIN_Y, GOAL_MAX_Y)
-        points.append([start_x, start_y, goal_x, goal_y])
+    start_y_values = [START_MIN_Y + i * (START_MAX_Y - START_MIN_Y) / (num_divisions - 1) for i in range(num_divisions)]
+    goal_y_values = [GOAL_MIN_Y + i * (GOAL_MAX_Y - GOAL_MIN_Y) / (num_divisions - 1) for i in range(num_divisions)]
+    
+    for start_y in start_y_values:
+        for goal_y in goal_y_values:
+            points.append([START_X, start_y, GOAL_X, goal_y])
+    
     return points
 
 def save_start_goal_points(filename, points):
@@ -39,9 +39,7 @@ def save_start_goal_points(filename, points):
     print("Saved start and goal points to {}".format(filename))
 
 def main():
-    iterations = int(input("Enter the number of iterations: "))
-
-    points = generate_start_goal_points(iterations)
+    points = generate_start_goal_points(NUM_DIVISIONS)
     save_start_goal_points(POINTS_FILE, points)
 
 if __name__ == '__main__':

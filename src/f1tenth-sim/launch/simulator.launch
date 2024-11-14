@@ -29,7 +29,7 @@
 
   <!-- simulator arguments -->
   <arg         name           = 'world_name'
-               default        = 'map_experiment_2'/> <!-- race_track, race_track_obstacles, yard, map_experiment, map_experiment_2, map_four_turn-->
+               default        = 'map_monte_2'/> <!-- race_track, race_track_obstacles, yard, map_experiment, map_experiment_2, map_four_turn-->
   <arg         name           = 'gui'
                default        = 'true'/>
   <arg         name           = 'run_camera'
