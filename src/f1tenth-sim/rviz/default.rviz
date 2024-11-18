@@ -99,12 +99,12 @@ Visualization Manager:
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: true
+      Enabled: false
       Name: Local Cost Map
       Topic: /move_base/local_costmap/costmap
       Unreliable: false
       Use Timestamp: false
-      Value: true
+      Value: false
     - Alpha: 0.699999988079071
       Class: rviz/Map
       Color Scheme: map
@@ -522,16 +522,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 21.24597930908203
+      Distance: 65.22929382324219
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -11.446988105773926
-        Y: 3.530283212661743
-        Z: -1.6247249841690063
+        X: 0.1107223778963089
+        Y: 0.8984971046447754
+        Z: -1.6273573637008667
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -558,5 +558,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1280
-  X: 3840
+  X: 2560
   Y: 0
