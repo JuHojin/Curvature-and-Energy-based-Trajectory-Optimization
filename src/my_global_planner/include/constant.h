@@ -23,7 +23,7 @@ namespace Constant {
     constexpr double CURVATURE_BOUND_MIN = 0.5 * MAP_RESOLUTION;
     constexpr double CURVATURE_BOUND_DECAY = 0.6;
     constexpr unsigned int MAX_OPT_ITER = 10;
-    constexpr double GAMMA = 1e-6;
+    constexpr double GAMMA = 0;
     
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;

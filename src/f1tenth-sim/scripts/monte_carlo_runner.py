@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import rospy
 import pandas as pd
@@ -209,14 +208,6 @@ def main():
     constants = parse_constants_from_h_file(CONSTANT_FILE)
     travel_time_list = []
     path_planner = rospy.get_param('~path_planner', 'QP')
-    qp_type = rospy.get_param('/move_base/QP_type', 0)
-    rospy.loginfo("QP_type before processing: {}".format(qp_type))
-    path_planner = "{}_type_{}".format(path_planner, qp_type)
-    rospy.loginfo("Final path_planner: {}".format(path_planner))
-
-
-
-
     if path_planner == 'QP':
         gamma = constants.get('GAMMA')
         if not (gamma == 0 or gamma == 0.0):
@@ -227,7 +218,6 @@ def main():
     calculation_time_list = load_existing_data(CALCULATION_TIME_FILE, path_planner)
     success_list = load_existing_data(SUCCESS_FILE, path_planner)
     optimization_success_list = load_existing_data(OPT_SUCCESS_FILE, path_planner) if path_planner.startswith('QP') else []
-
 
     # Set starting index based on the minimum length of existing lists
     if path_planner.startswith('QP'):
@@ -364,7 +354,6 @@ def main():
 
         # Save data after each iteration
         save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, optimization_success_list)
-
 
 if __name__ == "__main__":
     try:
