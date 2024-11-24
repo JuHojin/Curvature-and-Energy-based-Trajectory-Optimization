@@ -59,6 +59,13 @@ def call_reset_racecar_service(x, y):
         request.model_state.pose.position.z = 0.001
         request.model_state.pose.orientation.w = 1.0
 
+        request.model_state.twist.linear.x = 0.0
+        request.model_state.twist.linear.y = 0.0
+        request.model_state.twist.linear.z = 0.0
+        request.model_state.twist.angular.x = 0.0
+        request.model_state.twist.angular.y = 0.0
+        request.model_state.twist.angular.z = 0.0
+
         response = rest_racecar(request)
         if response.success:
             print("Start: x = {}, y = {}".format(x, y))
@@ -269,6 +276,7 @@ def main():
         
         # Delete previous goal
         cancel_move_base_goal()
+        # TODO: clear last path
         
         start_x, start_y = start_points[i]
         goal_x, goal_y = goal_points[i]
