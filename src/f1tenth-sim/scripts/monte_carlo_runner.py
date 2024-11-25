@@ -2,6 +2,7 @@
 
 import rospy
 import pandas as pd
+import math
 import csv
 import os
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
@@ -24,6 +25,7 @@ START_EPSILON = 0.1
 pub_command = rospy.Publisher('/car_1/command', AckermannDrive, queue_size=1)
 amcl_position = None
 plan_received = False
+latest_plan_goal = None
 planning_calculation_time = 0.0
 optimization_success = False
 calculation_time_list = []
@@ -36,8 +38,10 @@ def amcl_pose_callback(msg):
 
 def latest_plan_callback(msg):
     global plan_received
+    global latest_plan_goal
     if msg:
         plan_received = True
+        latest_plan_goal = msg.poses[-1].pose
 
 def planning_calculation_time_callback(msg):
     global planning_calculation_time
@@ -271,12 +275,13 @@ def main():
         return
 
     # Monte Carlo Simulation
+    global plan_received
+    global latest_plan_goal
     for i in range(resume_idx, len(start_points)):
         print("""================================================\nplanner: {}, iteration: {}""".format(path_planner, i+1))
         
         # Delete previous goal
         cancel_move_base_goal()
-        # TODO: clear last path
         
         start_x, start_y = start_points[i]
         goal_x, goal_y = goal_points[i]
@@ -302,14 +307,17 @@ def main():
         # Set goal point
         publish_goal(goal_x, goal_y)
         rospy.sleep(1)
-        
+        print("Published Goal")
+
         # Wait for planning to complete
-        global plan_received
-        while not rospy.is_shutdown():
-            if plan_received:
-                rospy.set_param('/auto_control_active', True)
-                start_time = rospy.Time.now()
-                break
+        rate = rospy.Rate(1)
+        while not rospy.is_shutdown():  
+            if plan_received and latest_plan_goal is not None:
+                if abs(latest_plan_goal.position.y - goal_y) < 0.1:
+                    rospy.loginfo("Auto control active")
+                    rospy.set_param('/auto_control_active', True)
+                    start_time = rospy.Time.now()
+                    break
             rate.sleep()
         
         # Wait for car to arrive at goal
