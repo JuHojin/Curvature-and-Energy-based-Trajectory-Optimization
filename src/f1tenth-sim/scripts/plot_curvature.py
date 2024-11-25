@@ -10,26 +10,22 @@ class CurvaturePlotter:
         rospy.init_node('curvature_plotter', anonymous=True)
 
         plt.ion()
-        # 여러 subplot을 생성하여 데이터를 각각 플로팅할 준비
         self.fig, (self.ax_peaks, self.ax_sums, self.ax_times) = plt.subplots(3, 1, figsize=(12, 18))
 
-        # 각 subplot에 대한 초기 설정
-        self.line_peaks, = self.ax_peaks.plot([], [], color='navy', label='Curvature Peaks', linewidth=5.0)  # 선 굵기 설정
-        # self.ax_peaks.set_xlabel('Iteration', fontsize=20)  # x축 글씨 크기 설정
-        self.ax_peaks.set_ylabel('Curvature Peaks', fontsize=20)  # y축 글씨 크기 설정
-        self.ax_peaks.set_title('Curvature Peaks per Iteration', fontsize=20)  # 제목 글씨 크기 설정
+        self.line_peaks, = self.ax_peaks.plot([], [], color='navy', label='Curvature Peaks', linewidth=5.0)
+        self.ax_peaks.set_ylabel('Curvature Peaks', fontsize=20)
+        self.ax_peaks.set_title('Curvature Peaks per Iteration', fontsize=20)
         self.ax_peaks.tick_params(axis='both', labelsize=20)
 
-        self.line_sums, = self.ax_sums.plot([], [], color='navy', label='Curvature Sums', linewidth=5.0)  # 선 굵기 설정
-        # self.ax_sums.set_xlabel('Iteration', fontsize=20)  # x축 글씨 크기 설정
-        self.ax_sums.set_ylabel('Curvature Sums', fontsize=20)  # y축 글씨 크기 설정
-        self.ax_sums.set_title('Curvature Sums per Iteration', fontsize=20)  # 제목 글씨 크기 설정
+        self.line_sums, = self.ax_sums.plot([], [], color='navy', label='Curvature Sums', linewidth=5.0)
+        self.ax_sums.set_ylabel('Curvature Sums', fontsize=20)
+        self.ax_sums.set_title('Curvature Sums per Iteration', fontsize=20)
         self.ax_sums.tick_params(axis='both', labelsize=20)
 
-        self.line_times, = self.ax_times.plot([], [], color='navy', label='Travel Times', linewidth=5.0)  # 선 굵기 설정
-        self.ax_times.set_xlabel('Iteration', fontsize=20)  # x축 글씨 크기 설정
-        self.ax_times.set_ylabel('Travel Time', fontsize=20)  # y축 글씨 크기 설정
-        self.ax_times.set_title('Travel Time per Iteration', fontsize=20)  # 제목 글씨 크기 설정
+        self.line_times, = self.ax_times.plot([], [], color='navy', label='Travel Times', linewidth=5.0)
+        self.ax_times.set_xlabel('Iteration', fontsize=20)
+        self.ax_times.set_ylabel('Travel Time', fontsize=20)
+        self.ax_times.set_title('Travel Time per Iteration', fontsize=20)
         self.ax_times.tick_params(axis='both', labelsize=20)
         
         plt.tight_layout()
@@ -78,6 +74,8 @@ class CurvaturePlotter:
             if len(self.curvature_peaks) > 0:
                 self.line_peaks.set_xdata(range(1, len(self.curvature_peaks) + 1))
                 self.line_peaks.set_ydata(self.curvature_peaks)
+
+                self.ax_peaks.axhline(y=0.5, color='red', linestyle='--', linewidth=2.5, label='Threshold (0.5)')
 
             # Curvature sums plot update
             if len(self.curvature_sums) > 0:
