@@ -556,7 +556,7 @@ std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std
                 }
                 std::vector<double> weights(sec.size());
                 std::transform(section_distances.begin(), section_distances.end(), weights.begin(), [](double d) {
-                    return 1.0 / (std::pow(d, 3) + 1e-6);
+                    return 1.0 / (std::pow(d, 2) + 1e-6);
                 });
                 double weighted_index = std::inner_product(sec.begin(), sec.end(), weights.begin(), 0.0) / std::accumulate(weights.begin(), weights.end(), 0.0);
                 pin_point_indices.push_back(static_cast<int>(std::round(weighted_index)));
