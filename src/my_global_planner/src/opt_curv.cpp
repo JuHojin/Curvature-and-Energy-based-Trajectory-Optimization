@@ -5,6 +5,7 @@
 #include <tf/tf.h>
 #include <numeric>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int32.h>
 #include "my_global_planner.h"
 #include "opt_curv.h"
 #include "path_func.h"
@@ -22,6 +23,7 @@ ros::Publisher optimization_status_publisher;
 ros::Publisher travel_time_publisher;
 ros::Publisher curvature_sums_publisher;
 ros::Publisher curvature_peaks_publisher;
+ros::Publisher index_publisher;
 
 // Use EPSILON to treat very small changes in travel_time as no change,
 double EPSILON = 1e-6;
@@ -38,6 +40,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     Boundaries current_boundaries;
     Boundaries prev_boundaries;
     bool success_flag;
+    int i;
 
     int qp_type;
     ros::NodeHandle nh("/");
@@ -52,7 +55,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         return new_path;
     }
 
-    for (int i = 0; i < max_iter; ++i) {
+    for (i = 0; i < max_iter; ++i) {
         if (qp_type == 0) {
             path = uniformSpacing(new_path, Constant::UNIFORM_STEP);
         } else if (qp_type == 1) {
@@ -221,7 +224,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
-        if (i >= 2 && ( (travel_time + EPSILON) > travel_times[i - 1] || std::isnan(travel_time))) {
+        if (i >= 3 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
             ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
             // Revert to the previous path
             new_path = path; 
@@ -242,11 +245,13 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     status_msg.data = success_flag;
     optimization_status_publisher.publish(status_msg);
 
+    std_msgs::Int32 index_msg;
+    index_msg.data = i - 1;
+    index_publisher.publish(index_msg);
+
     publishTravelTimes(travel_time_publisher, travel_times);
     publishCurvatureSums(curvature_sums_publisher, curvature_sums);
     publishCurvaturePeaks(curvature_peaks_publisher, curvature_peaks);
-
-
 
     ROS_INFO("============= QP optimization End =============");
     // the return path is adaptive spaced path

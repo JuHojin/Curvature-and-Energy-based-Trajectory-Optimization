@@ -2,14 +2,13 @@
 
 import rospy
 import pandas as pd
-import math
 import csv
 import os
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from ackermann_msgs.msg import AckermannDrive
 from nav_msgs.msg import Path
-from std_msgs.msg import Float64, Bool
+from std_msgs.msg import Int32, Float64, Bool, Float64MultiArray
 from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +17,7 @@ POINTS_FILE = os.path.join(PARENT_DIR, 'data', 'start_goal_pair.csv')
 TRAVEL_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'travel_time.csv')
 OPT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'opt_success.csv')
 SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'success.csv')
+CURVATURE_PEAK_FILE = os.path.join(PARENT_DIR, 'data', 'curvature_peak.csv')
 CALCULATION_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'calculation_time.csv')
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 START_EPSILON = 0.1
@@ -31,6 +31,9 @@ optimization_success = False
 calculation_time_list = []
 optimization_success_list = []
 success_list = []
+curvature_peak_list = []
+curvature_peaks = []
+selected_index = 0
 
 def amcl_pose_callback(msg):
     global amcl_position
@@ -50,6 +53,14 @@ def planning_calculation_time_callback(msg):
 def optimization_status_callback(msg):
     global optimization_success
     optimization_success = msg.data
+    
+def curvature_peaks_callback(msg):
+    global curvature_peaks
+    curvature_peaks = msg.data
+
+def index_callback(msg):
+    global selected_index
+    selected_index = msg.data
 
 def call_reset_racecar_service(x, y):
     rospy.wait_for_service('/reset_racecar_pose')
@@ -204,13 +215,15 @@ def save_data_to_csv(filename, path_planner, data_list):
 
     df.to_csv(filename, index=False)
 
-def save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, optimization_success_list=None):
+def save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, curvature_peak_list, optimization_success_list=None):
     save_data_to_csv(TRAVEL_TIME_FILE, path_planner, travel_time_list)
     save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
     save_data_to_csv(SUCCESS_FILE, path_planner, success_list)
+    save_data_to_csv(CURVATURE_PEAK_FILE, path_planner, curvature_peak_list)
     if path_planner.startswith('QP') and optimization_success_list is not None:
         save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
     print("Data saved successfully")
+
 
 def main():
     rospy.init_node('monte_carlo_runner', anonymous=True)
@@ -228,6 +241,7 @@ def main():
     travel_time_list = load_existing_data(TRAVEL_TIME_FILE, path_planner)
     calculation_time_list = load_existing_data(CALCULATION_TIME_FILE, path_planner)
     success_list = load_existing_data(SUCCESS_FILE, path_planner)
+    curvature_peak_list = load_existing_data(CURVATURE_PEAK_FILE, path_planner)
     optimization_success_list = load_existing_data(OPT_SUCCESS_FILE, path_planner) if path_planner.startswith('QP') else []
 
     # Set starting index based on the minimum length of existing lists
@@ -236,19 +250,22 @@ def main():
                 len(pd.Series(travel_time_list).dropna()),
                 len(pd.Series(calculation_time_list).dropna()),
                 len(pd.Series(success_list).dropna()),
+                len(pd.Series(curvature_peak_list).dropna()),
                 len(pd.Series(optimization_success_list).dropna())
             ) - 1
     else:
         min_length = min(
                 len(pd.Series(travel_time_list).dropna()),
                 len(pd.Series(calculation_time_list).dropna()),
-                len(pd.Series(success_list).dropna())
+                len(pd.Series(success_list).dropna()),
+                len(pd.Series(curvature_peak_list).dropna())
         ) - 1
         
     resume_idx = max(0, min_length)
     travel_time_list = travel_time_list[:resume_idx]
     calculation_time_list = calculation_time_list[:resume_idx]
     success_list = success_list[:resume_idx]
+    curvature_peak_list = curvature_peak_list[:resume_idx]
     optimization_success_list = optimization_success_list[:resume_idx]
     rospy.loginfo("Resuming from index {}".format(resume_idx))
     
@@ -256,6 +273,8 @@ def main():
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/planning_calculation_time', Float64, planning_calculation_time_callback, queue_size=1)
+    rospy.Subscriber('/move_base/MyGlobalPlanner/curvature_peaks', Float64MultiArray, curvature_peaks_callback, queue_size=1)
+    rospy.Subscriber('/move_base/MyGlobalPlanner/index', Int32, index_callback, queue_size=1)
     if path_planner.startswith('QP'):
         rospy.Subscriber('/move_base/MyGlobalPlanner/optimization_status', Bool, optimization_status_callback, queue_size=1)
 
@@ -356,6 +375,11 @@ def main():
         pub_command.publish(command)
         rospy.set_param('/auto_control_active', False)
         
+        # Curvature Peak
+        curvature_peak = curvature_peaks[selected_index]
+        curvature_peak_list.append(curvature_peak)
+        print("Curvature Peak: {}".format(curvature_peak))
+        
         # Optimization success
         if path_planner.startswith('QP'):
             optimization_success_list.append(optimization_success)
@@ -369,7 +393,7 @@ def main():
         rospy.sleep(1.5)
 
         # Save data after each iteration
-        save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, optimization_success_list)
+        save_iteration_data(path_planner, travel_time_list, calculation_time_list, success_list, curvature_peak_list, optimization_success_list)
 
 if __name__ == "__main__":
     try:

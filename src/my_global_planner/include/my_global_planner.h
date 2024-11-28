@@ -39,6 +39,7 @@ extern ros::Publisher optimization_status_publisher;
 extern ros::Publisher travel_time_publisher;
 extern ros::Publisher curvature_sums_publisher;
 extern ros::Publisher curvature_peaks_publisher;
+extern ros::Publisher index_publisher;
 
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);

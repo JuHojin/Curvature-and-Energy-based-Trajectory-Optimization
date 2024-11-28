@@ -5,6 +5,7 @@
 #include <numeric>
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Int32.h>
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -67,6 +68,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     travel_time_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("travel_times", 1);
     curvature_sums_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_sums", 1);
     curvature_peaks_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_peaks", 1);
+    index_publisher = private_nh.advertise<std_msgs::Int32>("index", 1);
 
     // Subscriber
     ros::NodeHandle nh;
