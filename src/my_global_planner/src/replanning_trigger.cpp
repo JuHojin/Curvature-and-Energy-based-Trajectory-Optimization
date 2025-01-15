@@ -47,7 +47,7 @@ public:
         int ahead_idx;
         int replanning_idx;
 
-        ros::Rate rate(1.0);
+        ros::Rate rate(100.0);
         while (ros::ok()) {
             ROS_INFO("\n\n");
             ros::spinOnce();
@@ -200,10 +200,12 @@ private:
         if (current_idx == -1) {
             return {-1, -1};
         }
-        double time = 4.0;
-        int min_gap = 3;
-        int start_idx = current_idx + std::max(static_cast<int>(linear_velocity_global * time), min_gap);
-        int ahead_idx = current_idx + 2 * std::max(static_cast<int>(linear_velocity_global * time), min_gap);
+        double time = 2.0;
+        int min_gap = 15;
+        // int start_idx = current_idx + std::max(static_cast<int>(linear_velocity_global * time), min_gap);
+        // int ahead_idx = current_idx + 2 * std::max(static_cast<int>(linear_velocity_global * time), min_gap);
+        int start_idx = current_idx + static_cast<int>(linear_velocity_global * time + min_gap);
+        int ahead_idx = current_idx + 2 * static_cast<int>(linear_velocity_global * time + min_gap);
 
         start_idx = std::min(start_idx, static_cast<int>(current_plan_world_.poses.size() - 1));
         ahead_idx = std::min(ahead_idx, static_cast<int>(current_plan_world_.poses.size() - 1));

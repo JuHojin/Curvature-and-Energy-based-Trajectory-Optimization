@@ -6,9 +6,9 @@
   <arg         name           = 'car_name'
                default        = 'car_1'/>
   <arg         name           = 'x_pos'
-               default        = '0'/> <!-- 2.5 -->
+               default        = '2.5'/> <!-- 2.5 -->
   <arg         name           = 'y_pos'
-               default        = '0'/>
+               default        = '2.5'/>
   <arg         name           = 'z_pos'
                default        = '0.05'/>
   <arg         name           = 'run_gazebo'
@@ -29,7 +29,7 @@
 
   <!-- simulator arguments -->
   <arg         name           = 'world_name'
-               default        = 'map_monte_3'/> <!-- race_track, race_track_obstacles, yard, map_experiment, map_experiment_2, map_four_turn-->
+               default        = 'simulation'/> <!-- simulation, race_track, race_track_obstacles, yard, map_experiment, map_experiment_2, map_four_turn-->
   <arg         name           = 'gui'
                default        = 'true'/>
   <arg         name           = 'run_camera'
