@@ -392,7 +392,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             path_replan_local_map.push_back(point_local_map);
         }
 
-        path_opt_replan_local_map = optimize_min_curvature(path_replan_local_map, Constant::MAX_OPT_ITER, true, tf_buffer_);
+        path_opt_replan_local_map = optimize_min_curvature(path_replan_local_map, Constant::MAX_OPT_ITER_REPLAN, true, tf_buffer_);
 
         // ROS_INFO("path_opt_replan_local_map contains %lu points", path_opt_replan_local_map.size());
         // for (size_t i = 0; i < path_opt_replan_local_map.size(); ++i) {

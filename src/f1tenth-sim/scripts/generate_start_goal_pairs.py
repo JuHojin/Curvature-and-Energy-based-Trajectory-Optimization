@@ -2,16 +2,16 @@
 import csv
 import os
 
-# 고정된 x 좌표
-START_X = -16.0
-GOAL_X = 16.0
+# X coordinate of the start and goal points
+START_X = 0.5
+GOAL_X = 19.5
 
-# y 좌표의 범위와 분할 개수
-START_MIN_Y = -9.0
-START_MAX_Y = 9.0
-GOAL_MIN_Y = -9.0
-GOAL_MAX_Y = 9.0
-NUM_DIVISIONS = 15
+# Y coordinate range of the start and goal points
+START_MIN_Y = -1.5
+START_MAX_Y = 8.5
+GOAL_MIN_Y = -1.5
+GOAL_MAX_Y = 8.5
+NUM_DIVISIONS = 21
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, '../data')

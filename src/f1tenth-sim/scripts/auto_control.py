@@ -264,7 +264,7 @@ def main():
 
             if np.sqrt((ego_x - wpts_x[-1])**2 + (ego_y - wpts_y[-1])**2) < STOP_EPSILON:
                 rospy.loginfo("==== Control End ====")
-                rospy.set_param('/auto_control_active', False)
+                rospy.set_param('/auto_control_active', True)
                 auto_control.x_list = []
                 auto_control.y_list = []
                 auto_control.publish_command(0.0, 0.0)
