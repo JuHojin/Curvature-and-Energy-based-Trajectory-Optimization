@@ -302,6 +302,7 @@
       <static>1</static>
     </model>
     <model name='unit_box'>
+      <static>1</static>
       <pose frame=''>5.30361 9.37354 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -367,6 +368,7 @@
       <cast_shadows>1</cast_shadows>
     </light>
     <model name='unit_box_0'>
+      <static>1</static>
       <pose frame=''>10.7359 6.37389 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -419,6 +421,7 @@
       </link>
     </model>
     <model name='unit_box_1'>
+      <static>1</static>    
       <pose frame=''>8.33921 11.4108 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -471,6 +474,7 @@
       </link>
     </model>
     <model name='unit_box_2'>
+      <static>1</static>    
       <pose frame=''>9.34857 9.44718 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -523,6 +527,7 @@
       </link>
     </model>
     <model name='unit_box_3'>
+      <static>1</static>    
       <pose frame=''>5.74604 6.79708 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -575,6 +580,7 @@
       </link>
     </model>
     <model name='unit_box_4'>
+      <static>1</static>    
       <pose frame=''>7.59764 4.82321 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -627,6 +633,7 @@
       </link>
     </model>
     <model name='unit_box_5'>
+      <static>1</static>    
       <pose frame=''>13.1297 8.10641 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -679,6 +686,7 @@
       </link>
     </model>
     <model name='unit_box_6'>
+      <static>1</static>    
       <pose frame=''>12.0449 10.5461 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -731,6 +739,7 @@
       </link>
     </model>
     <model name='unit_box_7'>
+      <static>1</static>    
       <pose frame=''>11.1426 7.87273 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -783,6 +792,7 @@
       </link>
     </model>
     <model name='unit_box_9'>
+      <static>1</static>    
       <pose frame=''>5.74175 4.31467 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -835,6 +845,7 @@
       </link>
     </model>
     <model name='unit_box_10'>
+      <static>1</static>    
       <pose frame=''>8.25101 7.37664 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -887,6 +898,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone'>
+      <static>1</static>    
       <pose frame=''>13.5293 2.47998 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -939,6 +951,7 @@
       </link>
     </model>
     <model name='unit_box_7_clone'>
+      <static>1</static>    
       <pose frame=''>14.2832 6.10823 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -991,6 +1004,7 @@
       </link>
     </model>
     <model name='unit_box_4_clone'>
+      <static>1</static>    
       <pose frame=''>18.1399 8.01122 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1043,6 +1057,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone_clone'>
+      <static>1</static>    
       <pose frame=''>18.9687 10.5412 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1095,6 +1110,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone_clone_clone'>
+      <static>1</static>    
       <pose frame=''>19.4116 5.70244 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1147,6 +1163,7 @@
       </link>
     </model>
     <model name='unit_box_4_clone_0'>
+      <static>1</static>    
       <pose frame=''>15.9171 3.49316 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1199,6 +1216,7 @@
       </link>
     </model>
     <model name='unit_box_7_clone_0'>
+      <static>1</static>    
       <pose frame=''>6.5423 0.643379 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1251,6 +1269,7 @@
       </link>
     </model>
     <model name='unit_box_7_clone_clone'>
+      <static>1</static>    
       <pose frame=''>12.1844 2.17569 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1303,6 +1322,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone_clone_0'>
+      <static>1</static>    
       <pose frame=''>18.8048 0.609278 0.5 0 -0 0</pose>
       <link name='link'>
         <inertial>
@@ -1649,6 +1669,7 @@
       </camera>
     </gui>
     <model name='unit_box_9_clone_clone_clone_clone'>
+      <static>1</static>    
       <pose frame=''>18.4844 3.29942 0.55 -0 -0 -0</pose>
       <link name='link'>
         <inertial>
@@ -1701,6 +1722,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone_clone_clone_clone_clone'>
+      <static>1</static>    
       <pose frame=''>17.4793 4.06211 0.549995 -9e-06 -1e-06 1e-06</pose>
       <link name='link'>
         <inertial>
@@ -1753,6 +1775,7 @@
       </link>
     </model>
     <model name='unit_box_9_clone_clone_clone_clone_0'>
+      <static>1</static>    
       <pose frame=''>14.1239 0.644398 0.55 -0 -0 -1e-06</pose>
       <link name='link'>
         <inertial>

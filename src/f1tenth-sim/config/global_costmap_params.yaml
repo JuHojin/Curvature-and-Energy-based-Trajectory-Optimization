@@ -18,7 +18,9 @@ plugins:
   - {name: inflation_layer,         type: "costmap_2d::InflationLayer"}
 
 inflation_layer:
-  # inflation_radius: 1.0
+  # Thick
   inflation_radius: 0.5
-  # cost_scaling_factor: 100.0
   cost_scaling_factor: 1
+  # Thin 
+  # inflation_radius: 0.35
+  # cost_scaling_factor: 1

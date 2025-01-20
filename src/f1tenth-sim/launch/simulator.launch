@@ -6,9 +6,9 @@
   <arg         name           = 'car_name'
                default        = 'car_1'/>
   <arg         name           = 'x_pos'
-               default        = '2.5'/> <!-- 2.5 -->
+               default        = '2.5'/> <!-- when using the map: simulation 2.5, otherwise 0 -->
   <arg         name           = 'y_pos'
-               default        = '2.5'/>
+               default        = '2.5'/> <!-- when using the map: simulation 2.5, otherwise 0 -->
   <arg         name           = 'z_pos'
                default        = '0.05'/>
   <arg         name           = 'run_gazebo'
