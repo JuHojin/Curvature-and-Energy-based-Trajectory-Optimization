@@ -1,6 +1,10 @@
-# Minimum Curvature Trajectory Planning Project
+# Curvature and Energy based Trajectory Optimization in Unstructured Environments
 
-This project focuses on simulating minimum curvature trajectory planning using the Gazebo simulation environment.
+Trajectory planning that minimizes path curvature and energy (path length) in unstructured environments using the f1tenth Gazebo simulation environment.
+
+**Reference Paper:**  
+["Curvature and Energy based Trajectory Optimization in Unstructured Environments."](https://takahashi-seiryu.github.io/assets/pdf/Curvature_and_Energy_based_Trajectory_Optimization_in_Unstructured_Environments.pdf)
+
 
 ## Installation
 
