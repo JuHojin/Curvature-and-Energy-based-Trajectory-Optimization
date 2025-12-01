@@ -3,7 +3,7 @@
     <param name="use_sim_time" value="true"/>
 
     <!-- Map Configuration -->
-    <arg name="map_filename" default="simulation.yaml"/>
+    <arg name="map_filename" default="map_monte_3.yaml"/>
     <arg name="map_directory" default="$(find f1tenth-sim)/maps/"/>
     <arg name="full_map_path" value="$(arg map_directory)$(arg map_filename)"/>
         

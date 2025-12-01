@@ -18,6 +18,53 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(osqp REQUIRED)
 
+
+# --- MKL 라이브러리 찾기 시작 ---
+# MKL 루트 경로 힌트 추가 (시스템 환경에 맞게 경로 수정 가능)
+set(MKL_LIB_HINTS /opt/intel/oneapi/mkl/2025.1/lib) # libmkl_* 파일들이 있는 경로
+set(INTEL_COMPILER_LIB_HINTS /opt/intel/oneapi/compiler/2025.1/lib) # libiomp5.so 파일이 있는 경로
+
+# Advisor에서 요구하는 라이브러리 찾기
+find_library(MKL_INTEL_ILP64_LIBRARY NAMES mkl_intel_ilp64 HINTS ${MKL_LIB_HINTS})
+find_library(MKL_INTEL_THREAD_LIBRARY NAMES mkl_intel_thread HINTS ${MKL_LIB_HINTS})
+find_library(MKL_CORE_LIBRARY NAMES mkl_core HINTS ${MKL_LIB_HINTS})
+find_library(IOMP5_LIBRARY NAMES libiomp5 HINTS ${INTEL_COMPILER_LIB_HINTS})
+
+# 찾은 라이브러리 변수들을 Advisor 순서대로 리스트로 묶기
+set(MKL_LIBRARIES) # 리스트 초기화
+if(MKL_INTEL_ILP64_LIBRARY)
+  list(APPEND MKL_LIBRARIES ${MKL_INTEL_ILP64_LIBRARY})
+else()
+  message(FATAL_ERROR "MKL ILP64 Interface library (mkl_intel_ilp64) not found in ${MKL_LIB_HINTS}!")
+endif()
+if(MKL_INTEL_THREAD_LIBRARY)
+  list(APPEND MKL_LIBRARIES ${MKL_INTEL_THREAD_LIBRARY})
+else()
+  message(FATAL_ERROR "MKL Intel Threading library (mkl_intel_thread) not found in ${MKL_LIB_HINTS}!")
+endif()
+if(MKL_CORE_LIBRARY)
+  list(APPEND MKL_LIBRARIES ${MKL_CORE_LIBRARY})
+else()
+  message(FATAL_ERROR "MKL Core library (mkl_core) not found in ${MKL_LIB_HINTS}!")
+endif()
+if(IOMP5_LIBRARY)
+  list(APPEND MKL_LIBRARIES ${IOMP5_LIBRARY})
+else()
+  message(WARNING "Intel OpenMP library (libiomp5) not found in ${INTEL_COMPILER_LIB_HINTS}!") # 경고 또는 FATAL_ERROR
+endif()
+
+message(STATUS "Linking with MKL Libraries: ${MKL_LIBRARIES}")
+# --- MKL 라이브러리 찾기 끝 ---
+
+# --- MKL 컴파일러 옵션 추가 시작 ---
+# Advisor에서 제시된 컴파일러 옵션 추가
+# 전역적으로 추가하거나 필요한 타겟에만 추가할 수 있음
+# target_compile_definitions(${PROJECT_NAME} PRIVATE MKL_ILP64) # MKL_ILP64 정의 추가
+add_definitions(-DMKL_ILP64) # 전역적으로 추가하는 것이 간단할 수 있음
+# target_include_directories(${PROJECT_NAME} PRIVATE ${MKL_INCLUDE_DIRS}) # 필요시 MKL 헤더 경로 추가 (find_path로 MKL_INCLUDE_DIRS 설정 필요)
+# --- MKL 컴파일러 옵션 추가 끝 ---
+
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -158,7 +205,11 @@ add_executable(replanning_trigger src/replanning_trigger.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
-  osqp::osqp
+  osqp::osqp          # OSQP 라이브러리 타겟
+  ${MKL_LIBRARIES}    # 찾은 MKL 라이브러리 리스트 (순서 중요)
+  pthread             # POSIX Threads
+  m                   # Math library
+  dl                  # Dynamic linking library
 )
 
 target_link_libraries(replanning_trigger

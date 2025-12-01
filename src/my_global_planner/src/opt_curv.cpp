@@ -39,7 +39,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     std::vector<double> curvature_peaks;
     Boundaries current_boundaries;
     Boundaries prev_boundaries;
-    bool success_flag;
+    bool success_flag=true;
     int i;
 
     int qp_type;
@@ -875,9 +875,9 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     osqp_set_default_settings(settings);
     settings->rho = 0.5;
     settings->alpha = 1.6;
-    settings->verbose = 0;
+    settings->verbose = 1;
     settings->warm_start = 1;
-
+    
     // OSQP data
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
     data->n = H_upper.rows();

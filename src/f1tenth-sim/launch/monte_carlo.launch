@@ -14,7 +14,7 @@
     <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/spline_degree" value="3"/>      <!-- spline degree -->
     <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/num_splice_points" value="10"/>  <!-- number of splice points -->
 
-    <node pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
+    <node pkg="f1tenth-sim" type="monte_carlo_time_only.py" name="monte_carlo_runner" output="screen">
         <param name="path_planner" value="$(arg path_planner)"/>
     </node>
 

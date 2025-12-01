@@ -150,6 +150,26 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         return false;
     }
     
+    auto poseEquals = [](const geometry_msgs::PoseStamped& lhs, const geometry_msgs::PoseStamped& rhs) {
+        if (lhs.header.frame_id != rhs.header.frame_id) {
+            return false;
+        }
+        const double tol = 1e-3;
+        return (std::abs(lhs.pose.position.x - rhs.pose.position.x) < tol) &&
+               (std::abs(lhs.pose.position.y - rhs.pose.position.y) < tol) &&
+               (std::abs(lhs.pose.position.z - rhs.pose.position.z) < tol);
+    };
+
+    bool has_prev_request = !start_.header.frame_id.empty() && !goal_.header.frame_id.empty();
+    if (!replanning_mode && has_prev_request && !latest_plan_global.empty()
+        && poseEquals(start, start_) && poseEquals(goal, goal_)) {
+        ROS_INFO("Reusing existing global plan (identical start/goal).");
+        nav_msgs::Path latest_plan_world = producePathMapToWorld(latest_plan_global);
+        publishPath(plan_publisher_latest, latest_plan_world);
+        plan = latest_plan_world.poses;
+        return true;
+    }
+
     // Count number of plans every monte carlo iteration
     int count_plan;
     nh.getParam("/move_base/count_plan", count_plan);
@@ -299,6 +319,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         // Measure planning calculation time: end
         ros::Time end_time = ros::Time::now();
         double planning_calculation_time = (end_time - start_time).toSec();
+        ROS_INFO("===== Planning calculation time: %f seconds =====", planning_calculation_time);
         std_msgs::Float64 planning_calculation_time_msg;
         planning_calculation_time_msg.data = planning_calculation_time;
         planning_calculation_time_publisher.publish(planning_calculation_time_msg);

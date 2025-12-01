@@ -19,8 +19,8 @@ plugins:
 
 inflation_layer:
   # Thick
-  inflation_radius: 0.5
-  cost_scaling_factor: 1
-  # Thin 
-  # inflation_radius: 0.35
+  # inflation_radius: 0.5
   # cost_scaling_factor: 1
+  # Thin 
+  inflation_radius: 0.35
+  cost_scaling_factor: 1

@@ -12,7 +12,7 @@ recovery_behaviors: []
 # Planner Settings
 planner_frequency: 0.0      # Frequency in Hz to run the global planning loop
 planner_patience: 10000.0   # Seconds to wait for a valid plan before recovery
-max_planning_retries: -1    # Number of planning retries before recovery; -1 for infinite
+max_planning_retries: 0    # Number of planning retries before recovery; -1 for infinite
 
 # Recovery and Oscillation
 recovery_behavior_enabled: false  # Fully disable recovery behaviors
