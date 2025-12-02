@@ -33,7 +33,7 @@ double EPSILON = 1e-6;
 // ========================================
 // Main
 // ========================================
-std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer) {
+std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d> path, const size_t max_iter, bool local, tf2_ros::Buffer& tf_buffer, std::size_t fixed_points) {
     
     std::vector<Eigen::Vector2d> new_path = path;
     std::vector<double> travel_times;
@@ -73,6 +73,53 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         start = now;
     };
 
+    std::size_t target_points = fixed_points;
+    if (target_points == 0) {
+        target_points = path.size();
+    }
+
+    // OSQP workspace reuse within one optimize call
+    OSQPWorkspace* workspace = nullptr;
+    OSQPData* data = nullptr;
+    OSQPSettings* settings = nullptr;
+    std::vector<c_float> P_vals;
+    std::vector<c_float> A_vals;
+    std::vector<c_float> q_vals;
+    std::vector<c_float> l_vals;
+    std::vector<c_float> u_vals;
+    c_int P_nz = 0;
+    c_int A_nz = 0;
+    c_int dim_n = 0;
+    c_int dim_m = 0;
+
+    auto cleanup_osqp = [&]() {
+        if (workspace) {
+            osqp_cleanup(workspace);
+            workspace = nullptr;
+        }
+        if (data) {
+            // data->P/A are freed by osqp_cleanup
+            c_free(data->q);
+            c_free(data->l);
+            c_free(data->u);
+            c_free(data);
+            data = nullptr;
+        }
+        if (settings) {
+            c_free(settings);
+            settings = nullptr;
+        }
+        P_vals.clear();
+        A_vals.clear();
+        q_vals.clear();
+        l_vals.clear();
+        u_vals.clear();
+        P_nz = 0;
+        A_nz = 0;
+        dim_n = 0;
+        dim_m = 0;
+    };
+
     for (i = 0; i < max_iter; ++i) {
         ros::WallTime stage_start = ros::WallTime::now();
 
@@ -80,6 +127,9 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
             path = uniformSpacing(new_path, Constant::UNIFORM_STEP);
         } else if (qp_type == 1) {
             path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+        }
+        if (target_points > 1) {
+            path = fixedCountSpacing(path, target_points);
         }
         update_stage(stage_start, wall_time_spacing);
 
@@ -755,6 +805,40 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     double wall_time_solve = 0.0;
     double wall_time_cleanup = 0.0;
 
+    // Keep an OSQP workspace per call to reuse when the problem dimension stays the same.
+    static OSQPWorkspace* workspace = nullptr;
+    static OSQPData* data = nullptr;
+    static OSQPSettings* settings = nullptr;
+    static std::vector<c_float> q_vals;
+    static std::vector<c_float> l_vals;
+    static std::vector<c_float> u_vals;
+    static c_int dim_n = 0;
+    static c_int dim_m = 0;
+
+    auto cleanup_osqp = [&]() {
+        if (workspace) {
+            osqp_cleanup(workspace);
+            workspace = nullptr;
+        }
+        if (data) {
+            // data->P and data->A are freed by osqp_cleanup
+            c_free(data->q);
+            c_free(data->l);
+            c_free(data->u);
+            c_free(data);
+            data = nullptr;
+        }
+        if (settings) {
+            c_free(settings);
+            settings = nullptr;
+        }
+        q_vals.clear();
+        l_vals.clear();
+        u_vals.clear();
+        dim_n = 0;
+        dim_m = 0;
+    };
+
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
 
@@ -1048,59 +1132,84 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     // Use upper triangular part of H
     Eigen::MatrixXd H_upper = H.triangularView<Eigen::Upper>();
-
-    // Log sparsity information for profiling
-
-    // Use OSQP settings as usual for dense matrix optimization
-    OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
-    osqp_set_default_settings(settings);
-    settings->rho = 0.5;
-    settings->alpha = 1.6;
-    settings->verbose = 1;
-    settings->warm_start = 1;
-    
-    // OSQP data
-    OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
-    data->n = H_upper.rows();
-    data->m = E.rows();
-    data->P = denseToCSC(H_upper);
-    data->q = f.data();
-    data->A = denseToCSC(E);
-    data->l = l.data();
-    data->u = u.data();
+    csc* P_csc = denseToCSC(H_upper);
+    csc* A_csc = denseToCSC(E);
     accum_stage(wall_time_csc);
 
-    // Setup workspace
-    OSQPWorkspace *work;
-    osqp_setup(&work, data, settings);
-    accum_stage(wall_time_setup);
+    bool need_setup = (!workspace) || (P_csc->n != dim_n) || (P_csc->m != dim_n) || (A_csc->m != dim_m) || (A_csc->n != dim_n);
+
+    Eigen::VectorXd solution = Eigen::VectorXd::Zero(H.rows());
+    int success = OSQP_UNSOLVED;
+
+    if (need_setup) {
+        cleanup_osqp();
+
+        settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
+        osqp_set_default_settings(settings);
+        settings->rho = 0.5;
+        settings->alpha = 1.6;
+        settings->verbose = 1;
+        settings->warm_start = 1;
+
+        data = (OSQPData *)c_malloc(sizeof(OSQPData));
+        data->n = P_csc->n;
+        data->m = A_csc->m;
+        data->P = P_csc;
+        data->A = A_csc;
+        data->q = (c_float*)c_malloc(sizeof(c_float) * data->n);
+        data->l = (c_float*)c_malloc(sizeof(c_float) * data->m);
+        data->u = (c_float*)c_malloc(sizeof(c_float) * data->m);
+        for (c_int idx = 0; idx < data->n; ++idx) {
+            data->q[idx] = static_cast<c_float>(f(idx));
+        }
+        for (c_int idx = 0; idx < data->m; ++idx) {
+            data->l[idx] = static_cast<c_float>(l(idx));
+            data->u[idx] = static_cast<c_float>(u(idx));
+        }
+
+        if (osqp_setup(&workspace, data, settings) != 0) {
+            cleanup_osqp();
+            c_free(P_csc->x); c_free(P_csc->i); c_free(P_csc->p); c_free(P_csc);
+            c_free(A_csc->x); c_free(A_csc->i); c_free(A_csc->p); c_free(A_csc);
+            return std::make_pair(solution, -1);
+        }
+        accum_stage(wall_time_setup);
+
+        q_vals.assign(data->q, data->q + data->n);
+        l_vals.assign(data->l, data->l + data->m);
+        u_vals.assign(data->u, data->u + data->m);
+        dim_n = data->n;
+        dim_m = data->m;
+    } else {
+        osqp_update_P(workspace, P_csc->x, OSQP_NULL, P_csc->nzmax);
+        osqp_update_A(workspace, A_csc->x, OSQP_NULL, A_csc->nzmax);
+        for (c_int idx = 0; idx < data->n; ++idx) {
+            q_vals[idx] = static_cast<c_float>(f(idx));
+        }
+        osqp_update_lin_cost(workspace, q_vals.data());
+        for (c_int idx = 0; idx < data->m; ++idx) {
+            l_vals[idx] = static_cast<c_float>(l(idx));
+            u_vals[idx] = static_cast<c_float>(u(idx));
+        }
+        osqp_update_bounds(workspace, l_vals.data(), u_vals.data());
+
+        // free temp CSC created for update
+        c_free(P_csc->x); c_free(P_csc->i); c_free(P_csc->p); c_free(P_csc);
+        c_free(A_csc->x); c_free(A_csc->i); c_free(A_csc->p); c_free(A_csc);
+    }
 
     // Solve the problem
     ros::WallTime wall_solve_start = ros::WallTime::now();
-    osqp_solve(work);
+    osqp_solve(workspace);
     wall_time_solve += (ros::WallTime::now() - wall_solve_start).toSec();
     wall_stage_start = ros::WallTime::now();
 
-    Eigen::VectorXd solution(data->n);
-    for (int i = 0; i < data->n; ++i) {
-        solution[i] = work->solution->x[i];
+    solution.resize(data->n);
+    for (int idx = 0; idx < data->n; ++idx) {
+        solution[idx] = workspace->solution->x[idx];
     }
 
-    int success = work->info->status_val;
-
-    // Clean up
-    osqp_cleanup(work);
-    c_free(data->P->x);
-    c_free(data->P->i);
-    c_free(data->P->p);
-    c_free(data->P);
-    c_free(data->A->x);
-    c_free(data->A->i);
-    c_free(data->A->p);
-    c_free(data->A);
-    c_free(data);
-    c_free(settings);
-    accum_stage(wall_time_cleanup);
+    success = workspace->info->status_val;
 
     double total = (ros::WallTime::now() - wall_getalpha_start).toSec();
     double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup;

@@ -149,6 +149,48 @@ std::vector<Eigen::Vector2d> uniformSpacing(const std::vector<Eigen::Vector2d>& 
     return new_path;
 }
 
+std::vector<Eigen::Vector2d> fixedCountSpacing(const std::vector<Eigen::Vector2d>& path, std::size_t target_points) {
+    if (path.size() < 2 || target_points < 2) {
+        return path;
+    }
+
+    // cumulative arc length
+    std::vector<double> cumdist;
+    cumdist.reserve(path.size());
+    cumdist.push_back(0.0);
+    for (std::size_t i = 1; i < path.size(); ++i) {
+        cumdist.push_back(cumdist.back() + (path[i] - path[i - 1]).norm());
+    }
+    double total_len = cumdist.back();
+    if (total_len <= 1e-9) {
+        return path;
+    }
+
+    double step = total_len / static_cast<double>(target_points - 1);
+    std::vector<Eigen::Vector2d> out;
+    out.reserve(target_points);
+    out.push_back(path.front());
+
+    std::size_t seg = 1;
+    for (std::size_t k = 1; k + 1 < target_points; ++k) {
+        double target_s = step * static_cast<double>(k);
+        while (seg < cumdist.size() && cumdist[seg] < target_s) {
+            ++seg;
+        }
+        if (seg >= cumdist.size()) {
+            out.push_back(path.back());
+            continue;
+        }
+        double s0 = cumdist[seg - 1];
+        double s1 = cumdist[seg];
+        double ratio = (target_s - s0) / std::max(1e-9, s1 - s0);
+        Eigen::Vector2d pt = path[seg - 1] + ratio * (path[seg] - path[seg - 1]);
+        out.push_back(pt);
+    }
+    out.push_back(path.back());
+    return out;
+}
+
 std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path, double min_step_size, double max_step_size) {
     std::vector<Eigen::Vector2d> new_path;
     new_path.push_back(path[0]);

@@ -91,7 +91,6 @@ private:
 
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
-    bool enable_bspline_smoothing_{true};
 
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;
@@ -107,6 +106,8 @@ private:
     ros::Publisher replan_status_publisher;
     ros::Publisher planning_calculation_time_publisher;
     ros::Publisher curvature_publisher;
+    bool enable_bspline_smoothing_{true};
+    int fixed_spacing_points_{0};
     
     ros::Subscriber replanning_trigger_sub;
     ros::Subscriber replanning_indices_sub;

@@ -70,6 +70,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     curvature_peaks_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_peaks", 1);
     index_publisher = private_nh.advertise<std_msgs::Int32>("index", 1);
     private_nh.param("enable_bspline_smoothing", enable_bspline_smoothing_, true);
+    private_nh.param("fixed_spacing_points", fixed_spacing_points_, 0);
 
     // Subscriber
     ros::NodeHandle nh;
@@ -310,7 +311,10 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 // QP optimization
                 // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
                 std::vector<Eigen::Vector2d> uniform_path = convertPoseStampedToVector2d(uniform_plan);
-                std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false, tf_buffer_);
+                std::size_t qp_target_points = (fixed_spacing_points_ > 1)
+                        ? static_cast<std::size_t>(fixed_spacing_points_)
+                        : std::max<std::size_t>(2, uniform_path.size());
+                std::vector<Eigen::Vector2d> opt_path = optimize_min_curvature(uniform_path, Constant::MAX_OPT_ITER, false, tf_buffer_, qp_target_points);
 
                 // Pin point selection (based on opt_path)
                 auto pin_point_result = pin_point_select(opt_path);
