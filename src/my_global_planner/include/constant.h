@@ -24,7 +24,8 @@ namespace Constant {
     constexpr double CURVATURE_BOUND_DECAY = 0.6;
     constexpr unsigned int MAX_OPT_ITER = 10;
     constexpr unsigned int MAX_OPT_ITER_REPLAN = 3;
-    constexpr double GAMMA = 1e-7;
+    // 0, 1e-7
+    constexpr double GAMMA = 0; 
     
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;

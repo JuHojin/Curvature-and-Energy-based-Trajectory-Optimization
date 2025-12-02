@@ -91,6 +91,7 @@ private:
 
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
+    bool enable_bspline_smoothing_{true};
 
     ros::Publisher plan_publisher_a_star;
     ros::Publisher plan_publisher_pose_smooth;

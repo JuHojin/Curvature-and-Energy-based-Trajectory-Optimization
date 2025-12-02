@@ -171,12 +171,24 @@ def load_start_goal_points(filename):
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             csv_reader = csv.reader(file)
-            next(csv_reader) # skip the header
+            header = next(csv_reader) # skip the header
+            header_map = {name.strip(): idx for idx, name in enumerate(header)}
+
+            def col_index(name, fallback):
+                return header_map.get(name, fallback)
+
+            sx_idx = col_index('start_x', 0)
+            sy_idx = col_index('start_y', 1)
+            gx_idx = col_index('goal_x', 2)
+            gy_idx = col_index('goal_y', 3)
+
             start_points = []
             goal_points = []
             for row in csv_reader:
-                start_points.append((float(row[0]), float(row[1])))
-                goal_points.append((float(row[2]), float(row[3])))
+                if len(row) <= max(sx_idx, sy_idx, gx_idx, gy_idx):
+                    continue
+                start_points.append((float(row[sx_idx]), float(row[sy_idx])))
+                goal_points.append((float(row[gx_idx]), float(row[gy_idx])))
         return start_points, goal_points
     else:
         rospy.logerr("Points file not found: {}".format(filename))
@@ -226,7 +238,23 @@ def save_iteration_data(path_planner, travel_time_list, calculation_time_list, s
 
 
 def main():
+    global POINTS_FILE, TRAVEL_TIME_FILE, CALCULATION_TIME_FILE, SUCCESS_FILE
+    global CURVATURE_PEAK_FILE, OPT_SUCCESS_FILE
+
     rospy.init_node('monte_carlo_runner', anonymous=True)
+
+    dataset = rospy.get_param('~dataset', 'full')
+    suffix = '' if dataset in ('', 'full', None) else '_' + str(dataset)
+
+    def dataset_file(base_name, default_path):
+        return os.path.join(PARENT_DIR, 'data', base_name + suffix + '.csv') if suffix else default_path
+
+    POINTS_FILE = rospy.get_param('~points_file', dataset_file('start_goal_pair', DEFAULT_POINTS_FILE))
+    TRAVEL_TIME_FILE = rospy.get_param('~travel_time_file', dataset_file('travel_time', DEFAULT_TRAVEL_TIME_FILE))
+    CALCULATION_TIME_FILE = rospy.get_param('~calculation_time_file', dataset_file('calculation_time', DEFAULT_CALCULATION_TIME_FILE))
+    SUCCESS_FILE = rospy.get_param('~success_file', dataset_file('success', DEFAULT_SUCCESS_FILE))
+    CURVATURE_PEAK_FILE = rospy.get_param('~curvature_peak_file', dataset_file('curvature_peak', DEFAULT_CURVATURE_PEAK_FILE))
+    OPT_SUCCESS_FILE = rospy.get_param('~opt_success_file', dataset_file('opt_success', DEFAULT_OPT_SUCCESS_FILE))
 
     # Initialize
     constants = parse_constants_from_h_file(CONSTANT_FILE)

@@ -8,6 +8,7 @@
 #include <queue>
 #include <map>
 #include <unordered_map>
+#include <array>
 #include <costmap_2d/costmap_2d_ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include "my_global_planner.h"
@@ -51,14 +52,19 @@ public:
 
 private:
     std::priority_queue<Node*, std::vector<Node*>, CompareNode> open_set_;
-    std::unordered_map<unsigned int, Node> all_nodes_;
+    std::vector<Node> nodes_;
+    std::vector<uint8_t> closed_;
+    std::vector<unsigned int> touched_;
     unsigned int size_x_in_cells;
     unsigned int size_y_in_cells;
 
-    Node* getInitNode(unsigned int x, unsigned int y);
+    inline unsigned int idx(unsigned int x, unsigned int y) const {
+        return y * size_x_in_cells + x;
+    }
     Node* getNode(unsigned int x, unsigned int y);
     std::vector<std::pair<Node*, float>> getNeighbors(Node& current);
     double calculateH(unsigned int x, unsigned int y, unsigned int goal_x, unsigned int goal_y);
+    void resetTouched();
 };
 
 } // namespace basic_planner

@@ -1,6 +1,7 @@
 <launch>
     <!-- path_planner: Default, B_spline, QP (Default: A*)-->
     <arg name="path_planner" default="QP"/>
+    <arg name="dataset" default="full"/>
     
     <!-- QP type: uniform: 0, adaptive: 1 -->
     <rosparam param="move_base/QP_type"> 1 </rosparam>
@@ -16,6 +17,7 @@
 
     <node pkg="f1tenth-sim" type="monte_carlo_time_only.py" name="monte_carlo_runner" output="screen">
         <param name="path_planner" value="$(arg path_planner)"/>
+        <param name="dataset" value="$(arg dataset)"/>
     </node>
 
 </launch>

@@ -69,6 +69,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     curvature_sums_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_sums", 1);
     curvature_peaks_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_peaks", 1);
     index_publisher = private_nh.advertise<std_msgs::Int32>("index", 1);
+    private_nh.param("enable_bspline_smoothing", enable_bspline_smoothing_, true);
 
     // Subscriber
     ros::NodeHandle nh;
@@ -185,6 +186,23 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         goal_ = goal;
         plan.clear();
 
+        ros::WallTime wall_planning_start = ros::WallTime::now();
+        ros::WallTime wall_stage_start = wall_planning_start;
+        auto record_stage = [&](double& slot) {
+            ros::WallTime now = ros::WallTime::now();
+            slot += (now - wall_stage_start).toSec();
+            wall_stage_start = now;
+        };
+
+        double wall_time_preprocess = 0.0;
+        double wall_time_astar = 0.0;
+        double wall_time_post_smooth = 0.0;
+        double wall_time_uniform_spacing = 0.0;
+        double wall_time_qp = 0.0;
+        double wall_time_bspline = 0.0;
+        double wall_time_curvature = 0.0;
+        double wall_time_velocity = 0.0;
+
         // Measure planning calculation time: start
         ros::Time start_time = ros::Time::now();
 
@@ -213,6 +231,8 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             return false;
         }
 
+        record_stage(wall_time_preprocess);
+
         // Find initial Path: A* Planning
         basic_planner::AStarPlanner a_star_planner;
         std::vector<geometry_msgs::PoseStamped> a_star_plan;
@@ -228,11 +248,14 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             ROS_WARN("A* planning failed");
         }
 
+        record_stage(wall_time_astar);
+
         // Post smoothing
         std::vector<geometry_msgs::PoseStamped> post_smooth_plan = postSmooth(a_star_plan);
         nav_msgs::Path post_smooth_plan_world = producePathMapToWorld(post_smooth_plan);
         publishPath(plan_publisher_pose_smooth, post_smooth_plan_world);
         ROS_INFO("Post smoothing is successful");
+        record_stage(wall_time_post_smooth);
 
         // Declare plans
         std::vector<geometry_msgs::PoseStamped> final_plan;
@@ -247,29 +270,42 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
             final_plan_world = producePathMapToWorld(uniform_plan);
             publishPath(plan_publisher_initial, final_plan_world);
             publishPath(plan_publisher_latest, final_plan_world);
+            record_stage(wall_time_uniform_spacing);
         } else {
-            if (planner_type == 1) {
-                // Uniform Spacing (normal uniform step size)
-                uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+        if (planner_type == 1) {
+            // B-spline smoothing
+            // Uniform Spacing (normal uniform step size)
+            uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
 
-                // Uniform_plan_world is for publishing
-                uniform_plan_world = producePathMapToWorld(uniform_plan);
-                publishPath(plan_publisher_uniform, uniform_plan_world);
+            // Uniform_plan_world is for publishing
+            uniform_plan_world = producePathMapToWorld(uniform_plan);
+            publishPath(plan_publisher_uniform, uniform_plan_world);
+            record_stage(wall_time_uniform_spacing);
 
-                if (!callBSplineSmoothingService(uniform_plan, final_plan)) {
-                    return false;
-                }
-
-                // Publish the final plan
+            if (enable_bspline_smoothing_) {
+                bool bspline_ok = callBSplineSmoothingService(uniform_plan, final_plan);
                 final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
+                record_stage(wall_time_bspline);
+
+                if (!bspline_ok) {
+                    return false;
+                }
+            } else {
+                final_plan = uniform_plan;
+                final_plan_world = uniform_plan_world;
+                publishPath(plan_publisher_initial, final_plan_world);
+                publishPath(plan_publisher_latest, final_plan_world);
             }
-            else if (planner_type == 2) {
-                // Uniform Spacing (normal uniform step size)
-                uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
-                uniform_plan_world = producePathMapToWorld(uniform_plan);
+        }
+        else if (planner_type == 2) {
+            // QP family
+            // Uniform Spacing (normal uniform step size)
+            uniform_plan = uniformSpacing(post_smooth_plan, Constant::UNIFORM_STEP);
+            uniform_plan_world = producePathMapToWorld(uniform_plan);
                 publishPath(plan_publisher_uniform, uniform_plan_world);
+                record_stage(wall_time_uniform_spacing);
 
                 // QP optimization
                 // Optimizatoin - use Eigen::Vector2d, instead of geometry_msgs::PoseStamped.
@@ -281,18 +317,16 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 std::vector<int> opt_pin_point_indices = pin_point_result.first;
                 geometry_msgs::PoseArray opt_pin_point_list = pin_point_result.second;
 
-                // Final plan - make opt_path uniform
-                std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
-                
-                // B-spine smoothing to last_opt_plan
-                if (!callBSplineSmoothingService(last_opt_plan, final_plan, Constant::SMOOTHING_FACTOR, Constant::SPLINE_DEGREE, Constant::NUM_SPLINE_POINTS)) {
-                    return false;
-                }
-
+            // Final plan - make opt_path uniform
+            std::vector<geometry_msgs::PoseStamped> last_opt_plan = convertVector2dToPoseStamped(opt_path);
+            record_stage(wall_time_qp);
+            
+            // B-spine smoothing to last_opt_plan
+            if (enable_bspline_smoothing_) {
+                bool bspline_ok = callBSplineSmoothingService(last_opt_plan, final_plan, Constant::SMOOTHING_FACTOR, Constant::SPLINE_DEGREE, Constant::NUM_SPLINE_POINTS);
                 final_plan_world = producePathMapToWorld(final_plan);
                 publishPath(plan_publisher_initial, final_plan_world);
                 publishPath(plan_publisher_latest, final_plan_world);
-
                 // Update pin points (based on final_plan)
                 auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
                 my_global_planner::PinPoints pin_points_msg;
@@ -300,14 +334,33 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                 pin_points_msg.index_array.data.clear();
                 pin_points_msg.index_array.data.insert(pin_points_msg.index_array.data.end(), updated_pin_points.second.begin(), updated_pin_points.second.end());
                 pin_points_publisher.publish(pin_points_msg);
+                record_stage(wall_time_bspline);
 
+                if (!bspline_ok) {
+                    return false;
+                }
+
+                latest_plan_global = final_plan;
+            } else {
+                final_plan = last_opt_plan;
+                final_plan_world = producePathMapToWorld(final_plan);
+                publishPath(plan_publisher_initial, final_plan_world);
+                publishPath(plan_publisher_latest, final_plan_world);
+                auto updated_pin_points = updatePinPoints(opt_pin_point_list, final_plan);
+                my_global_planner::PinPoints pin_points_msg;
+                pin_points_msg.pose_array = updated_pin_points.first;
+                pin_points_msg.index_array.data.clear();
+                pin_points_msg.index_array.data.insert(pin_points_msg.index_array.data.end(), updated_pin_points.second.begin(), updated_pin_points.second.end());
+                pin_points_publisher.publish(pin_points_msg);
                 latest_plan_global = final_plan;
             }
         }
+    }
 
         // Calculate curvature of final plan
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(final_plan_world);
         publishCurvature(curvature_publisher, curvature);
+        record_stage(wall_time_curvature);
 
         // Calculate velocity Profile
         auto velocity_result = getVelocityProfile(final_plan_world, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
@@ -315,6 +368,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         Eigen::MatrixXd velocity_constraints = velocity_result.second;
         publishVelocityProfile(profile_publisher, velocity_profile);
         publishVelocityConstraints(constraints_publisher, velocity_constraints);
+        record_stage(wall_time_velocity);
 
         // Measure planning calculation time: end
         ros::Time end_time = ros::Time::now();
@@ -323,6 +377,22 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         std_msgs::Float64 planning_calculation_time_msg;
         planning_calculation_time_msg.data = planning_calculation_time;
         planning_calculation_time_publisher.publish(planning_calculation_time_msg);
+
+        double planning_wall_time = (ros::WallTime::now() - wall_planning_start).toSec();
+        double accounted = wall_time_preprocess + wall_time_astar + wall_time_post_smooth +
+                           wall_time_uniform_spacing + wall_time_qp + wall_time_bspline +
+                           wall_time_curvature + wall_time_velocity;
+        double wall_time_other = planning_wall_time - accounted;
+        ROS_INFO_STREAM("[Timing][Wall] total=" << planning_wall_time
+                        << " | preprocess=" << wall_time_preprocess
+                        << ", astar=" << wall_time_astar
+                        << ", post=" << wall_time_post_smooth
+                        << ", uniform=" << wall_time_uniform_spacing
+                        << ", qp=" << wall_time_qp
+                        << ", bspline=" << wall_time_bspline
+                        << ", curvature=" << wall_time_curvature
+                        << ", velocity=" << wall_time_velocity
+                        << ", other=" << wall_time_other);
 
         plan = final_plan_world.poses;
         return a_star_success;
