@@ -1009,42 +1009,43 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     accum_stage(wall_time_matrix_build);
 
-    // // Convert Eigen matrices/vectors to string for ROS_INFO
-    // std::stringstream ss_E, ss_u, ss_l;
-    // // ss_E << E;
-    // ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
-    // ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
+    // Optional debug: print constraint matrices / eigenvalues / sparsity.
+    // Disabled by default for performance; keep here for future profiling.
+    /*
+    std::stringstream ss_E, ss_u, ss_l;
+    ss_E << E;
+    ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
+    ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
 
-    // // ROS_INFO_STREAM to output the contents
-    // // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
-    // ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
-    // ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
+    // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
+    ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
+    ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
 
-    // // Check convexity by inspecting the eigenvalues of H
-    // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
-    // ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
+    ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
 
     // Sparsity calculation and Sparse/Dense optimization branching (keep for future profiling)
-    // double A_ex_b_sparsity = calculateSparsity(A_ex_b);
-    // double A_ex_c_sparsity = calculateSparsity(A_ex_c);
-    // double A_ex_bcd_sparsity = calculateSparsity(A_ex_bcd);
-    // double N_x_sparsity = calculateSparsity(N_x);
-    // double N_y_sparsity = calculateSparsity(N_y);
-    // double T_nx_sparsity = calculateSparsity(T_nx);
-    // double T_ny_sparsity = calculateSparsity(T_ny);
-    // double E_curvature_sparsity = calculateSparsity(E_curvature);
-    // double E_sparsity = calculateSparsity(E);
-    // double H_sparsity = calculateSparsity(H);
-    // ROS_INFO_STREAM("[Sparsity] A_ex_b=" << A_ex_b_sparsity * 100.0
-    //                 << "%, A_ex_c=" << A_ex_c_sparsity * 100.0
-    //                 << "%, A_ex_bcd=" << A_ex_bcd_sparsity * 100.0
-    //                 << "%, N_x=" << N_x_sparsity * 100.0
-    //                 << "%, N_y=" << N_y_sparsity * 100.0
-    //                 << "%, T_nx=" << T_nx_sparsity * 100.0
-    //                 << "%, T_ny=" << T_ny_sparsity * 100.0
-    //                 << "%, E_curvature=" << E_curvature_sparsity * 100.0
-    //                 << "%, E=" << E_sparsity * 100.0
-    //                 << "%, H=" << H_sparsity * 100.0 << "%");
+    double A_ex_b_sparsity = calculateSparsity(A_ex_b);
+    double A_ex_c_sparsity = calculateSparsity(A_ex_c);
+    double A_ex_bcd_sparsity = calculateSparsity(A_ex_bcd);
+    double N_x_sparsity = calculateSparsity(N_x);
+    double N_y_sparsity = calculateSparsity(N_y);
+    double T_nx_sparsity = calculateSparsity(T_nx);
+    double T_ny_sparsity = calculateSparsity(T_ny);
+    double E_curvature_sparsity = calculateSparsity(E_curvature);
+    double E_sparsity = calculateSparsity(E);
+    double H_sparsity = calculateSparsity(H);
+    ROS_INFO_STREAM("[Sparsity] A_ex_b=" << A_ex_b_sparsity * 100.0
+                    << "%, A_ex_c=" << A_ex_c_sparsity * 100.0
+                    << "%, A_ex_bcd=" << A_ex_bcd_sparsity * 100.0
+                    << "%, N_x=" << N_x_sparsity * 100.0
+                    << "%, N_y=" << N_y_sparsity * 100.0
+                    << "%, T_nx=" << T_nx_sparsity * 100.0
+                    << "%, T_ny=" << T_ny_sparsity * 100.0
+                    << "%, E_curvature=" << E_curvature_sparsity * 100.0
+                    << "%, E=" << E_sparsity * 100.0
+                    << "%, H=" << H_sparsity * 100.0 << "%");
+    */
 
     // Use upper triangular part of H
     Eigen::MatrixXd H_upper = H.triangularView<Eigen::Upper>();
@@ -1054,10 +1055,24 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     // Use OSQP settings as usual for dense matrix optimization
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     osqp_set_default_settings(settings);
-    settings->rho = 0.5;
+
+    // printf("default eps_abs = %g\n", settings->eps_abs);
+    // printf("default eps_rel = %g\n", settings->eps_rel);
+    // printf("default rho     = %g\n", settings->rho);
+    // printf("default alpha   = %g\n", settings->alpha);
+    // printf("default max_iter= %d\n", settings->max_iter);
+    // printf("default polish  = %d\n", settings->polish);
+    // printf("default scaled_termination = %d\n", settings->scaled_termination);
+    // printf("default adaptive_rho = %d\n", settings->adaptive_rho);
+    // printf("default adaptive_rho_interval = %d\n", settings->adaptive_rho_interval);
+    // rho: 0.5 adap, 0.7 uni?
+    settings->rho = 0.7;
     settings->alpha = 1.6;
     settings->verbose = 1;
     settings->warm_start = 1;
+    // settings->adaptive_rho_interval = 10;
+    // settings->polish = 1;
+    // settings->polish_refine_iter = 3;
     
     // OSQP data
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
