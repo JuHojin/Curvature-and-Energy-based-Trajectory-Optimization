@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10.2)
 project(my_global_planner)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-O3 -march=native -DNDEBUG -mfma)
 add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries

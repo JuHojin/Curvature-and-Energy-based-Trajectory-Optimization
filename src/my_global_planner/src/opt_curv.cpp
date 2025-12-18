@@ -8,6 +8,7 @@
 #include <numeric>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int32.h>
+#include <unordered_map>
 #include "my_global_planner.h"
 #include "opt_curv.h"
 #include "path_func.h"
@@ -52,8 +53,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         ROS_INFO("Use uniformSpacing");
     } else if (qp_type == 1) {
         ROS_INFO("Use adaptiveSpacing");
+    } else if (qp_type == 2) {
+        ROS_INFO("Use adaptiveSpacing (Once) + adaptiveSpacingFixedN (After)");
     } else {
-        ROS_ERROR("Invalid QP_type parameter: %d. Expected values: 0 (uniformSpacing), 1 (adaptiveSpacing)", qp_type);
+        ROS_ERROR("Invalid QP_type parameter: %d. Expected values: 0 (uniformSpacing), 1 (adaptiveSpacing), 2 (adaptiveSpacing->adaptiveFixedN)", qp_type);
         return new_path;
     }
 
@@ -77,6 +80,33 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     if (target_points == 0) {
         target_points = path.size();
     }
+    std::size_t adaptive_fixed_n = 0; // qp_type 2에서 첫 iter 결과 포인트 수 저장
+
+    auto log_spacing_stats = [](const std::vector<Eigen::Vector2d>& pts, const std::string& tag) {
+        // 마지막 점과의 구간은 제외하고 통계 계산
+        if (pts.size() < 3) {
+            ROS_INFO_STREAM("[Spacing][" << tag << "] size=" << pts.size() << " (skip stats)");
+            return;
+        }
+        double min_d = std::numeric_limits<double>::max();
+        double max_d = 0.0;
+        double sum_d = 0.0;
+        std::size_t cnt = 0;
+        for (std::size_t idx = 1; idx + 1 < pts.size(); ++idx) {
+            double d = (pts[idx] - pts[idx - 1]).norm();
+            min_d = std::min(min_d, d);
+            max_d = std::max(max_d, d);
+            sum_d += d;
+            ++cnt;
+        }
+        if (cnt == 0) {
+            ROS_INFO_STREAM("[Spacing][" << tag << "] size=" << pts.size() << " (no segments)");
+            return;
+        }
+        double avg_d = sum_d / static_cast<double>(cnt);
+        ROS_INFO_STREAM("[Spacing][" << tag << "] size=" << pts.size()
+                        << " min=" << min_d << " avg=" << avg_d << " max=" << max_d);
+    };
 
     // OSQP workspace reuse within one optimize call
     OSQPWorkspace* workspace = nullptr;
@@ -93,6 +123,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     c_int dim_m = 0;
 
     auto cleanup_osqp = [&]() {
+        std::cout << "[Outer]Cleaning up OSQP data structures." << std::endl;
         if (workspace) {
             osqp_cleanup(workspace);
             workspace = nullptr;
@@ -120,16 +151,32 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         dim_m = 0;
     };
 
+    // QP Iteration loop
     for (i = 0; i < max_iter; ++i) {
         ros::WallTime stage_start = ros::WallTime::now();
 
         if (qp_type == 0) {
             path = uniformSpacing(new_path, Constant::UNIFORM_STEP);
+            if (target_points > 1) {
+                path = fixedCountSpacing(path, target_points);
+            }
+            log_spacing_stats(path, "uniform/fixed");
         } else if (qp_type == 1) {
             path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
-        }
-        if (target_points > 1) {
-            path = fixedCountSpacing(path, target_points);
+            log_spacing_stats(path, "adaptive");
+            if (target_points > 1) {
+                // fixedCountSpacing는 주석 처리 유지
+            }
+        } else if (qp_type == 2) {
+            if (i == 0) {
+                path = adaptiveSpacing(new_path, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+                adaptive_fixed_n = path.size();
+                log_spacing_stats(path, "adaptive(iter0)");
+            } else {
+                std::size_t use_n = adaptive_fixed_n > 1 ? adaptive_fixed_n : new_path.size();
+                path = adaptiveSpacingFixedN(new_path, use_n, Constant::ADAPTIVE_MIN_STEP, Constant::ADAPTIVE_MAX_STEP);
+                log_spacing_stats(path, "adaptiveFixedN");
+            }
         }
         update_stage(stage_start, wall_time_spacing);
 
@@ -375,6 +422,8 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
     for (int i = 0; i < num_splines - 1; ++i) {
         scaling(i) = pointDist(i) / pointDist(i + 1);
     }
+    // std::cout << "Scaling factors: " << scaling.transpose() << std::endl;
+    // std::cout << "Point Distances: " << pointDist.transpose() << std::endl;
 
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(num_splines * 4, num_splines * 4);
 
@@ -386,6 +435,7 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
                 0, 0, 2, 6, 0, 0, -2, 0;
 
     // Construct the system matrix with appropriate scaling for continuity constraints
+    // std::cout << "A pre-scaling:\n" << A << std::endl;
     for (int i = 0; i < num_splines; ++i) {
         int j = i * 4;
 
@@ -400,6 +450,7 @@ Eigen::MatrixXd getSystemMatrix(const std::vector<Eigen::Vector2d>& path) {
             A.block(j, j, 2, 4) = baseA.block(0, 0, 2, 4);
         }
     }
+    // std::cout << "A post-scaling:\n" << A << std::endl;
 
     // Starting point heading constraint
     A(num_splines * 4 - 2, 1) = 1;
@@ -787,9 +838,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
                                                      const std::vector<Eigen::Vector2d>& normal_vectors,
                                                      const Eigen::MatrixXd& A,
                                                      double curvature_bnd,
-                                                     double start_angle, double end_angle, double gamma) {
-    bool log_sparsity = false;
-    ros::param::param<bool>("my_global_planner/log_qp_sparsity", log_sparsity, false);
+                                                     double start_angle, double end_angle, double gamma) {                    
 
     ros::WallTime wall_getalpha_start = ros::WallTime::now();
     ros::WallTime wall_stage_start = wall_getalpha_start;
@@ -804,6 +853,43 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     double wall_time_setup = 0.0;
     double wall_time_solve = 0.0;
     double wall_time_cleanup = 0.0;
+    double wall_time_extract = 0.0;
+
+    // Fine-grained matrix-build timing
+    ros::WallTime wall_build = ros::WallTime::now();
+    double t_osqp_init = 0.0;
+    double t_osqp_cleanup = 0.0;
+    double t_triplet = 0.0;
+    double t_factor = 0.0;
+    double t_Tc = 0.0;
+    double t_normal_triplet = 0.0;
+    double t_normal_set = 0.0;
+    double t_solve_px = 0.0;
+    double t_solve_py = 0.0;
+    double t_curv = 0.0;
+    double t_energy = 0.0;
+    double t_H = 0.0;
+    double t_constraints = 0.0;
+    auto tick = [&](double& slot) {
+        ros::WallTime now = ros::WallTime::now();
+        slot += (now - wall_build).toSec();
+        wall_build = now;
+    };
+    // Cache ROS params to avoid per-call lookup overhead
+    static bool params_initialized = true;
+    static bool log_qp_diag = false;
+    static bool use_old_qp_calc = false;
+    bool log_sparsity = false;
+
+    if (!params_initialized) {
+        ros::param::param<bool>("my_global_planner/log_qp_sparsity", log_sparsity, false);
+        ros::param::param<bool>("my_global_planner/log_qp_diag", log_qp_diag, false);
+        ros::param::param<bool>("my_global_planner/use_old_qp_calc", use_old_qp_calc, false);
+        params_initialized = true;
+        std::cout << "[Inner]QP params initialized: log_qp_diag=" << log_qp_diag
+                  << ", use_old_qp_calc=" << use_old_qp_calc << std::endl;
+    }
+    tick(t_osqp_init);
 
     // Keep an OSQP workspace per call to reuse when the problem dimension stays the same.
     static OSQPWorkspace* workspace = nullptr;
@@ -816,6 +902,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     static c_int dim_m = 0;
 
     auto cleanup_osqp = [&]() {
+        std::cout << "[Inner]Cleaning up OSQP data structures." << std::endl;
         if (workspace) {
             osqp_cleanup(workspace);
             workspace = nullptr;
@@ -838,42 +925,61 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
         dim_n = 0;
         dim_m = 0;
     };
+    tick(t_osqp_cleanup);
 
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
 
-    // Construct extraction matrix : b component extraction for first derivative x'(t=0)
-    // Sparse extraction matrices
-    typedef Eigen::Triplet<double> T;
-    std::vector<T> triplets_b;
-    std::vector<T> triplets_c;
-    std::vector<T> triplets_bcd;
-    triplets_b.reserve(num_splines + 3);
-    triplets_c.reserve(num_splines + 2);
-    triplets_bcd.reserve(num_splines * 3);
-
-    for (int i = 0; i < num_splines; ++i) {
-        triplets_b.emplace_back(i, i * 4 + 1, 1.0);
-        triplets_c.emplace_back(i, i * 4 + 2, 2.0);
-
-        triplets_bcd.emplace_back(i * 3    , i * 4 + 1, 1.0);
-        triplets_bcd.emplace_back(i * 3 + 1, i * 4 + 2, 1.0);
-        triplets_bcd.emplace_back(i * 3 + 2, i * 4 + 3, 1.0);
-    }
-    int last_base = static_cast<int>(num_splines * 4 - 4);
-    triplets_b.emplace_back(num_points - 1, last_base + 1, 1.0);
-    triplets_b.emplace_back(num_points - 1, last_base + 2, 2.0);
-    triplets_b.emplace_back(num_points - 1, last_base + 3, 3.0);
-
-    triplets_c.emplace_back(num_points - 1, last_base + 2, 2.0);
-    triplets_c.emplace_back(num_points - 1, last_base + 3, 6.0);
+    // Extraction matrices (cache by num_points)
+    struct ExtractionCache {
+        Eigen::SparseMatrix<double> A_ex_b;
+        Eigen::SparseMatrix<double> A_ex_c;
+        Eigen::SparseMatrix<double> A_ex_bcd;
+    };
+    static std::unordered_map<int, ExtractionCache> extraction_cache;
 
     Eigen::SparseMatrix<double> A_ex_b(num_points, num_splines * 4);
     Eigen::SparseMatrix<double> A_ex_c(num_points, num_splines * 4);
     Eigen::SparseMatrix<double> A_ex_bcd(num_points * 3, num_splines * 4);
-    A_ex_b.setFromTriplets(triplets_b.begin(), triplets_b.end());
-    A_ex_c.setFromTriplets(triplets_c.begin(), triplets_c.end());
-    A_ex_bcd.setFromTriplets(triplets_bcd.begin(), triplets_bcd.end());
+
+    auto cache_it = extraction_cache.find(static_cast<int>(num_points));
+    if (cache_it != extraction_cache.end()) {
+        A_ex_b = cache_it->second.A_ex_b;
+        A_ex_c = cache_it->second.A_ex_c;
+        A_ex_bcd = cache_it->second.A_ex_bcd;
+        tick(t_triplet);
+    } else {
+        typedef Eigen::Triplet<double> T;
+        std::vector<T> triplets_b;
+        std::vector<T> triplets_c;
+        std::vector<T> triplets_bcd;
+        triplets_b.reserve(num_splines + 3);
+        triplets_c.reserve(num_splines + 2);
+        triplets_bcd.reserve(num_splines * 3);
+
+        for (int i = 0; i < num_splines; ++i) {
+            triplets_b.emplace_back(i, i * 4 + 1, 1.0);
+            triplets_c.emplace_back(i, i * 4 + 2, 2.0);
+
+            triplets_bcd.emplace_back(i * 3    , i * 4 + 1, 1.0);
+            triplets_bcd.emplace_back(i * 3 + 1, i * 4 + 2, 1.0);
+            triplets_bcd.emplace_back(i * 3 + 2, i * 4 + 3, 1.0);
+        }
+        int last_base = static_cast<int>(num_splines * 4 - 4);
+        triplets_b.emplace_back(num_points - 1, last_base + 1, 1.0);
+        triplets_b.emplace_back(num_points - 1, last_base + 2, 2.0);
+        triplets_b.emplace_back(num_points - 1, last_base + 3, 3.0);
+
+        triplets_c.emplace_back(num_points - 1, last_base + 2, 2.0);
+        triplets_c.emplace_back(num_points - 1, last_base + 3, 6.0);
+        tick(t_triplet);
+
+        A_ex_b.setFromTriplets(triplets_b.begin(), triplets_b.end());
+        A_ex_c.setFromTriplets(triplets_c.begin(), triplets_c.end());
+        A_ex_bcd.setFromTriplets(triplets_bcd.begin(), triplets_bcd.end());
+
+        extraction_cache[static_cast<int>(num_points)] = {A_ex_b, A_ex_c, A_ex_bcd};
+    }
 
     Eigen::SparseMatrix<double> A_sp = A.sparseView();
     Eigen::SparseMatrix<double> AT_sp = A_sp.transpose();
@@ -881,8 +987,11 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> AT_solver;
     A_solver.analyzePattern(A_sp);
     A_solver.factorize(A_sp);
-    AT_solver.analyzePattern(AT_sp);
-    AT_solver.factorize(AT_sp);
+    if (use_old_qp_calc || log_qp_diag) {
+        AT_solver.analyzePattern(AT_sp);
+        AT_solver.factorize(AT_sp);
+    }
+    tick(t_factor);
 
     if (log_sparsity) {
         logMatrixSparsity("A", A);
@@ -891,15 +1000,16 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
         logMatrixSparsity("A_ex_bcd", A_ex_bcd);
     }
 
-    Eigen::MatrixXd T_c = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+    // Eigen::MatrixXd T_c = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+    // tick(t_Tc);
 
-    if (log_sparsity) {
-        logMatrixSparsity("T_c", T_c);
-    }
+    // if (log_sparsity) {
+    //     logMatrixSparsity("T_c", T_c);
+    // }
 
     // Construct normal vector matrix (sparse)
-    std::vector<T> triplets_Nx;
-    std::vector<T> triplets_Ny;
+    std::vector<Eigen::Triplet<double>> triplets_Nx;
+    std::vector<Eigen::Triplet<double>> triplets_Ny;
     triplets_Nx.reserve(num_splines * 2);
     triplets_Ny.reserve(num_splines * 2);
 
@@ -922,11 +1032,15 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
             triplets_Ny.emplace_back(j + 1, 0, normal_vectors[0].y());
         }
     }
+    tick(t_normal_triplet);
 
     Eigen::SparseMatrix<double> N_x(num_splines * 4, num_points);
     Eigen::SparseMatrix<double> N_y(num_splines * 4, num_points);
     N_x.setFromTriplets(triplets_Nx.begin(), triplets_Nx.end());
     N_y.setFromTriplets(triplets_Ny.begin(), triplets_Ny.end());
+    tick(t_normal_set);
+    // std::cout << "N_x: " << N_x << std::endl;
+    // std::cout << "N_y: " << N_y << std::endl; 
 
     if (log_sparsity) {
         logMatrixSparsity("N_x", N_x);
@@ -963,7 +1077,9 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     // Calculate derivatives: x', y', x'y'
     Eigen::VectorXd px_solution = A_solver.solve(p_x);
+    tick(t_solve_px);
     Eigen::VectorXd py_solution = A_solver.solve(p_y);
+    tick(t_solve_py);
     Eigen::VectorXd x_dot = A_ex_b * px_solution;
     Eigen::VectorXd y_dot = A_ex_b * py_solution;
     Eigen::VectorXd x_dot_y_dot = -2 * x_dot.array() * y_dot.array();
@@ -974,15 +1090,87 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     // Curvature denominator calculations
     Eigen::VectorXd curv_den = (x_dot_sq + y_dot_sq).array().pow(1.5);
-    curv_den = curv_den.unaryExpr([](double v) { return std::abs(v) < 1e-9 ? 1e-9 : v; });
+    std::size_t clamp_cnt = 0;
+    curv_den = curv_den.unaryExpr([&](double v) {
+        if (std::abs(v) < 1e-9) {
+            ++clamp_cnt;
+            return 1e-9;
+        }
+        return v;
+    });
     Eigen::VectorXd curvatures_den = curv_den.array().inverse();
     curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; });
     Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
+    if (log_qp_diag) {
+        double min_speed_sq = (x_dot_sq + y_dot_sq).minCoeff();
+        double min_curv_den = curv_den.minCoeff();
+        ROS_INFO_STREAM("[Diag][QP] min_speed_sq=" << min_speed_sq
+                        << " min_curv_den=" << min_curv_den
+                        << " clamp_cnt=" << clamp_cnt);
+    }
+    tick(t_curv);
 
-    // Energy penalty
-    Eigen::MatrixXd T_q = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
-    Eigen::MatrixXd T_qnx = T_q * N_x;
-    Eigen::MatrixXd T_qny = T_q * N_y;
+    // Energy penalty: choose between legacy (AT_solver) and current multi-RHS build
+    Eigen::MatrixXd T_qnx;
+    Eigen::MatrixXd T_qny;
+    Eigen::VectorXd T_c_p_x;
+    Eigen::VectorXd T_c_p_y;
+    Eigen::VectorXd T_q_p_x;
+    Eigen::VectorXd T_q_p_y;
+    Eigen::MatrixXd T_nx;
+    Eigen::MatrixXd T_ny;
+    Eigen::MatrixXd T_c_old;
+    Eigen::MatrixXd T_q_old;
+    Eigen::MatrixXd T_nx_old;
+    Eigen::MatrixXd T_ny_old;
+    Eigen::MatrixXd T_qnx_old;
+    Eigen::MatrixXd T_qny_old;
+    bool has_old = false;
+    // tick(t_energy); // start energy block
+    
+    if (use_old_qp_calc) {
+        // Legacy path (HEAD~1과 동일): T_c/T_q를 AT_solver로 직접 계산
+        T_c_old = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+        T_q_old = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
+        T_nx.noalias() = T_c_old * N_x;
+        T_ny.noalias() = T_c_old * N_y;
+        T_qnx.noalias() = T_q_old * N_x;
+        T_qny.noalias() = T_q_old * N_y;
+        T_c_p_x.noalias() = T_c_old * p_x;
+        T_c_p_y.noalias() = T_c_old * p_y;
+        T_q_p_x.noalias() = T_q_old * p_x;
+        T_q_p_y.noalias() = T_q_old * p_y;
+        has_old = true;
+        // ROS_INFO("----[Diag][QP] Using old T_c/T_q path for QP build----");
+    } else {
+        // Current fast path: multi-RHS solves without T_c/T_q
+        // std::cout << "----[Diag][QP] Using new multi-RHS path for QP build----" << std::endl;
+        // 최소한의 임시만 생성(noalias)
+        Eigen::MatrixXd Yx = A_solver.solve(N_x);
+        Eigen::MatrixXd Yy = A_solver.solve(N_y);
+        T_nx.noalias() = A_ex_c * Yx;
+        T_ny.noalias() = A_ex_c * Yy;
+        T_qnx.noalias() = A_ex_bcd * Yx;
+        T_qny.noalias() = A_ex_bcd * Yy;
+        T_c_p_x.noalias() = A_ex_c * px_solution;
+        T_c_p_y.noalias() = A_ex_c * py_solution;
+        T_q_p_x.noalias() = A_ex_bcd * px_solution;
+        T_q_p_y.noalias() = A_ex_bcd * py_solution;
+        
+        if (log_qp_diag) {
+            T_c_old = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+            T_q_old = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
+            T_nx_old = T_c_old * N_x;
+            T_ny_old = T_c_old * N_y;
+            T_qnx_old = T_q_old * N_x;
+            T_qny_old = T_q_old * N_y;
+            has_old = true;
+            double diff_Tnx = (T_nx - T_nx_old).norm();
+            double diff_Tqnx = (T_qnx - T_qnx_old).norm();
+            ROS_INFO_STREAM("[Diag][QP] diff_Tnx=" << diff_Tnx << " diff_Tqnx=" << diff_Tqnx);
+        }
+    }
+    tick(t_energy);
 
     // Profiling helper (enable if needed)
     // double A_sparsity = calculateSparsity(A);
@@ -996,31 +1184,18 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     //                 << "%, Tqnx=" << T_qnx_sparsity * 100.0
     //                 << "%, Tqny=" << T_qny_sparsity * 100.0 << "%");
 
-    Eigen::MatrixXd Q_E = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
-    Eigen::MatrixXd block(3, 3);
+    Eigen::Matrix3d block;
     block << 1, 1, 1,
              1, 4.0/3.0, 3.0/2.0,
              1, 3.0/2.0, 9.0/5.0;
-
-    for (int i = 0; i < num_points; ++i) {
-        Q_E.block<3,3>(i * 3, i * 3) = block;
-    }
-    
-    Eigen::VectorXd T_c_p_x = T_c * p_x;
-    Eigen::VectorXd T_c_p_y = T_c * p_y;
-    Eigen::VectorXd T_q_p_x = T_q * p_x;
-    Eigen::VectorXd T_q_p_y = T_q * p_y;
 
     // Objective function formulation
     Eigen::MatrixXd P_xx = (curvatures_sq_den.array() * y_dot_sq.array()).matrix().asDiagonal();
     Eigen::MatrixXd P_yy = (curvatures_sq_den.array() * x_dot_sq.array()).matrix().asDiagonal();
     Eigen::MatrixXd P_xy = (curvatures_sq_den.array() * x_dot_y_dot.array()).matrix().asDiagonal();
 
-    Eigen::MatrixXd T_nx = T_c * N_x;
-    Eigen::MatrixXd T_ny = T_c * N_y;
-
     if (log_sparsity) {
-        logMatrixSparsity("T_q", T_q);
+        // logMatrixSparsity("T_q", T_q);
         logMatrixSparsity("T_qnx", T_qnx);
         logMatrixSparsity("T_qny", T_qny);
         logMatrixSparsity("T_nx", T_nx);
@@ -1033,63 +1208,175 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::MatrixXd H_x = T_nx.transpose() * P_xx * T_nx;
     Eigen::MatrixXd H_xy = T_ny.transpose() * P_xy * T_nx;
     Eigen::MatrixXd H_y = T_ny.transpose() * P_yy * T_ny;
-    Eigen::MatrixXd H_E = T_qnx.transpose() * Q_E * T_qnx + T_qny.transpose() * Q_E * T_qny;
+    // Energy term H_E, f_E
+    int n_vars = static_cast<int>(T_nx.cols());
+    Eigen::MatrixXd H_E = Eigen::MatrixXd::Zero(n_vars, n_vars);
+    Eigen::VectorXd f_E = Eigen::VectorXd::Zero(n_vars);
+
+    if (use_old_qp_calc) {
+        // Legacy path: explicit Q_E matmul (원래 구현)
+        Eigen::MatrixXd Q_E_old = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
+        for (int i = 0; i < num_points; ++i) {
+            Q_E_old.block<3,3>(i * 3, i * 3) = block;
+        }
+        H_E = T_qnx.transpose() * Q_E_old * T_qnx + T_qny.transpose() * Q_E_old * T_qny;
+        f_E = 2.0 * (T_qnx.transpose() * (Q_E_old * T_q_p_x)) + 2.0 * (T_qny.transpose() * (Q_E_old * T_q_p_y));
+        if (log_qp_diag) {
+            T_nx_old = T_nx; T_ny_old = T_ny; T_qnx_old = T_qnx; T_qny_old = T_qny;
+            T_c_old = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+            T_q_old = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
+            T_nx_old = T_c_old * N_x;
+            T_ny_old = T_c_old * N_y;
+            T_qnx_old = T_q_old * N_x;
+            T_qny_old = T_q_old * N_y;
+            has_old = true;
+        }
+    } else {
+        // Fast path: block-diag multiplication without forming Q_E
+        for (int i = 0; i < num_points; ++i) {
+            Eigen::MatrixXd Xi = T_qnx.block(3 * i, 0, 3, n_vars);
+            Eigen::MatrixXd Yi = T_qny.block(3 * i, 0, 3, n_vars);
+            Eigen::Vector3d bpx = T_q_p_x.segment(3 * i, 3);
+            Eigen::Vector3d bpy = T_q_p_y.segment(3 * i, 3);
+
+            Eigen::MatrixXd BX(block.rows(), Xi.cols());
+            Eigen::MatrixXd BY(block.rows(), Yi.cols());
+            BX.noalias() = block * Xi;
+            BY.noalias() = block * Yi;
+            H_E.noalias() += Xi.transpose() * BX;
+            H_E.noalias() += Yi.transpose() * BY;
+
+            Eigen::Vector3d gX = block * bpx;
+            Eigen::Vector3d gY = block * bpy;
+            f_E.noalias() += 2.0 * (Xi.transpose() * gX + Yi.transpose() * gY);
+        }
+
+        if (log_qp_diag) {
+            Eigen::MatrixXd Q_E_old = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
+            for (int i = 0; i < num_points; ++i) {
+                Q_E_old.block<3,3>(i * 3, i * 3) = block;
+            }
+            T_c_old = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
+            T_q_old = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
+            T_nx_old = T_c_old * N_x;
+            T_ny_old = T_c_old * N_y;
+            T_qnx_old = T_q_old * N_x;
+            T_qny_old = T_q_old * N_y;
+            has_old = true;
+        }
+    }
+
+    // Curvature term (unchanged)
     Eigen::MatrixXd H_k = H_x + H_xy + H_y;
     Eigen::MatrixXd H = H_k + gamma * H_E;
     H = (H + H.transpose()) * 0.5;
     // double regularization = 1e-6;
     // H += regularization * Eigen::MatrixXd::Identity(H.rows(), H.cols());
-
+    
     Eigen::VectorXd f_x = 2.0 * (T_nx.transpose() * (P_xx * T_c_p_x));
     Eigen::VectorXd f_y = 2.0 * (T_ny.transpose() * (P_yy * T_c_p_y));
     Eigen::VectorXd f_xy = (T_ny.transpose() * (P_xy * T_c_p_x)) + (T_nx.transpose() * (P_xy * T_c_p_y));
     Eigen::VectorXd f_k = f_x + f_xy + f_y;
-    Eigen::VectorXd f_E = 2.0 * (T_qnx.transpose() * (Q_E * T_q_p_x)) + 2.0 * (T_qny.transpose() * (Q_E * T_q_p_y));
     Eigen::VectorXd f = f_k + gamma * f_E;
-
+    tick(t_H);
+    
+    
     // Constraint function formulation
     Eigen::VectorXd P_x = curvatures_den.array() * y_dot.array();
     Eigen::VectorXd P_y = curvatures_den.array() * x_dot.array();
-
+    
     Eigen::MatrixXd E_curvature = P_y.asDiagonal() * T_ny - P_x.asDiagonal() * T_nx;
     Eigen::VectorXd curvature_reference = P_y.asDiagonal() * T_c_p_y - P_x.asDiagonal() * T_c_p_x;
-
+    
     Eigen::VectorXd curv_constraints_ge = Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
     Eigen::VectorXd curv_constraints_le = -Eigen::VectorXd::Constant(num_points, curvature_bnd) - curvature_reference;
-
-    // Boundary constraints
-    double end_point_boundary = 0.05;
-    left_dev_bnd[0] = end_point_boundary;
-    right_dev_bnd[0] = end_point_boundary;
-    left_dev_bnd[num_points - 1] = end_point_boundary;
-    right_dev_bnd[num_points - 1] = end_point_boundary;
-
-    // Checking conditions
-    for (size_t i = 0; i < num_points; ++i) {
-        if (-right_dev_bnd[i] > left_dev_bnd[i] || -left_dev_bnd[i] > right_dev_bnd[i]) {
-            throw std::runtime_error("ERROR: Too small track");
+    
+    if (log_qp_diag && has_old) {
+        Eigen::MatrixXd Q_E_old = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
+        for (int i = 0; i < num_points; ++i) {
+            Q_E_old.block<3,3>(i * 3, i * 3) = block;
         }
-    }
+        Eigen::VectorXd T_c_p_x_old = T_c_old * p_x;
+        Eigen::VectorXd T_c_p_y_old = T_c_old * p_y;
 
-    // Matrix stacking and appending: E, u, l
-    Eigen::MatrixXd E(2 * num_points, num_points);
-    E.topRows(num_points) = Eigen::MatrixXd::Identity(num_points, num_points);
-    E.bottomRows(num_points) = E_curvature;
+        Eigen::MatrixXd H_x_old = T_nx_old.transpose() * P_xx * T_nx_old;
+        Eigen::MatrixXd H_xy_old = T_ny_old.transpose() * P_xy * T_nx_old;
+        Eigen::MatrixXd H_y_old = T_ny_old.transpose() * P_yy * T_ny_old;
+        Eigen::MatrixXd H_E_old = T_qnx_old.transpose() * Q_E_old * T_qnx_old + T_qny_old.transpose() * Q_E_old * T_qny_old;
+        Eigen::MatrixXd H_k_old = H_x_old + H_xy_old + H_y_old;
+        Eigen::MatrixXd H_old = H_k_old + gamma * H_E_old;
+        H_old = (H_old + H_old.transpose()) * 0.5;
 
-    Eigen::VectorXd u(2 * num_points);
-    Eigen::VectorXd l(2 * num_points);
-    for (size_t i = 0; i < num_points; ++i) {
-        u(i) = left_dev_bnd[i];
-        l(i) = -right_dev_bnd[i];
-    }
-    u.segment(num_points, num_points) = curv_constraints_ge;
-    l.segment(num_points, num_points) = curv_constraints_le;
-
-    if (log_sparsity) {
-        logMatrixSparsity("E_curvature", E_curvature);
-        logMatrixSparsity("E", E);
-        logMatrixSparsity("H", H);
-    }
+        Eigen::VectorXd f_x_old = 2.0 * (T_nx_old.transpose() * (P_xx * T_c_p_x_old));
+        Eigen::VectorXd f_y_old = 2.0 * (T_ny_old.transpose() * (P_yy * T_c_p_y_old));
+        Eigen::VectorXd f_xy_old = (T_ny_old.transpose() * (P_xy * T_c_p_x_old)) + (T_nx_old.transpose() * (P_xy * T_c_p_y_old));
+        Eigen::VectorXd f_k_old = f_x_old + f_xy_old + f_y_old;
+        Eigen::VectorXd f_E_old = 2.0 * (T_qnx_old.transpose() * (Q_E_old * (A_ex_bcd * p_x))) +
+                                  2.0 * (T_qny_old.transpose() * (Q_E_old * (A_ex_bcd * p_y)));
+        Eigen::VectorXd f_old = f_k_old + gamma * f_E_old;
+        
+        Eigen::MatrixXd E_curvature_old = P_y.asDiagonal() * T_ny_old - P_x.asDiagonal() * T_nx_old;
+        Eigen::VectorXd curvature_reference_old = P_y.asDiagonal() * T_c_p_y_old - P_x.asDiagonal() * T_c_p_x_old;
+        
+        double diff_H = (H - H_old).norm();
+        double diff_f = (f - f_old).norm();
+        double diff_Ecurv = (E_curvature - E_curvature_old).norm();
+        double diff_curv_ref = (curvature_reference - curvature_reference_old).norm();
+        ROS_INFO_STREAM("[Diag][QP] diff_H=" << diff_H
+            << " diff_f=" << diff_f
+            << " diff_Ecurv=" << diff_Ecurv
+            << " diff_curv_ref=" << diff_curv_ref);
+        }
+        
+        // Boundary constraints
+        double end_point_boundary = 0.05;
+        left_dev_bnd[0] = end_point_boundary;
+        right_dev_bnd[0] = end_point_boundary;
+        left_dev_bnd[num_points - 1] = end_point_boundary;
+        right_dev_bnd[num_points - 1] = end_point_boundary;
+        
+        // Checking conditions
+        for (size_t i = 0; i < num_points; ++i) {
+            if (-right_dev_bnd[i] > left_dev_bnd[i] || -left_dev_bnd[i] > right_dev_bnd[i]) {
+                throw std::runtime_error("ERROR: Too small track");
+            }
+        }
+        
+        // Matrix stacking and appending: E, u, l
+        Eigen::MatrixXd E(2 * num_points, num_points);
+        E.topRows(num_points) = Eigen::MatrixXd::Identity(num_points, num_points);
+        E.bottomRows(num_points) = E_curvature;
+        
+        Eigen::VectorXd u(2 * num_points);
+        Eigen::VectorXd l(2 * num_points);
+        for (size_t i = 0; i < num_points; ++i) {
+            u(i) = left_dev_bnd[i];
+            l(i) = -right_dev_bnd[i];
+        }
+        u.segment(num_points, num_points) = curv_constraints_ge;
+        l.segment(num_points, num_points) = curv_constraints_le;
+        
+        if (log_sparsity) {
+            logMatrixSparsity("E_curvature", E_curvature);
+            logMatrixSparsity("E", E);
+            logMatrixSparsity("H", H);
+        }
+        tick(t_constraints);
+        
+        // Debug: detailed matrix-build timing
+        ROS_INFO_STREAM("[Timing][Build] t_osqp_init=" << t_osqp_init
+            << ", t_osqp_cleanup=" << t_osqp_cleanup 
+            << ", triplet=" << t_triplet
+            << ", factor=" << t_factor
+            << ", Tc=" << t_Tc
+            << ", normal_triplet=" << t_normal_triplet
+            << ", normal_set=" << t_normal_set
+                    << ", solve_px=" << t_solve_px
+                    << ", solve_py=" << t_solve_py
+                    << ", curv=" << t_curv
+                    << ", energy=" << t_energy
+                    << ", H/f=" << t_H
+                    << ", constraints=" << t_constraints);
 
     accum_stage(wall_time_matrix_build);
 
@@ -1199,20 +1486,22 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     }
 
     // Solve the problem
-    ros::WallTime wall_solve_start = ros::WallTime::now();
     osqp_solve(workspace);
-    wall_time_solve += (ros::WallTime::now() - wall_solve_start).toSec();
-    wall_stage_start = ros::WallTime::now();
+    accum_stage(wall_time_solve);
 
+    // Extract solution (accounted separately)
+    ros::WallTime t0_extract = ros::WallTime::now();
     solution.resize(data->n);
     for (int idx = 0; idx < data->n; ++idx) {
         solution[idx] = workspace->solution->x[idx];
     }
-
+    
     success = workspace->info->status_val;
+    wall_time_extract += (ros::WallTime::now() - t0_extract).toSec();
+    wall_stage_start = ros::WallTime::now();
 
     double total = (ros::WallTime::now() - wall_getalpha_start).toSec();
-    double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup;
+    double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup + wall_time_extract;
     double other = total - accounted;
     ROS_INFO_STREAM("[Timing][OSQP] total=" << total
                     << " | matrix_build=" << wall_time_matrix_build
@@ -1220,6 +1509,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
                     << ", setup=" << wall_time_setup
                     << ", solve=" << wall_time_solve
                     << ", cleanup=" << wall_time_cleanup
+                    << ", extract=" << wall_time_extract
                     << ", other=" << other);
 
     return std::make_pair(solution, success);

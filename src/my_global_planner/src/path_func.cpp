@@ -191,7 +191,94 @@ std::vector<Eigen::Vector2d> fixedCountSpacing(const std::vector<Eigen::Vector2d
     return out;
 }
 
+std::vector<Eigen::Vector2d> adaptiveSpacingFixedN(const std::vector<Eigen::Vector2d>& path, std::size_t target_points,
+                                                                                double min_step_size, double max_step_size) {
+    if (path.size() < 2 || target_points < 2) {
+        return path;
+    }
+
+    // 1) 호 길이 누적
+    std::vector<double> arc;
+    arc.reserve(path.size());
+    arc.push_back(0.0);
+    for (std::size_t i = 1; i < path.size(); ++i) {
+        arc.push_back(arc.back() + (path[i] - path[i - 1]).norm());
+    }
+    double total_len = arc.back();
+    if (total_len <= 1e-9) {
+        return path;
+    }
+
+    // 2) 장애물 거리 기반 가중 누적 길이
+    std::vector<double> weighted;
+    weighted.reserve(path.size());
+    weighted.push_back(0.0);
+    double total_weighted = 0.0;
+    double eps = 0.1;
+    unsigned int search_radius = static_cast<unsigned int>(std::max(0.0, max_step_size));
+
+    for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+        Eigen::Vector2d mid = 0.5 * (path[i] + path[i + 1]);
+        double obs; // = get_min_obstacle_distance(mid, search_radius);
+        double min_obstacle_distance = get_min_obstacle_distance(mid, search_radius);
+        
+        if (min_obstacle_distance != -1 && min_obstacle_distance < max_step_size){ //obs not free
+            if (min_obstacle_distance < min_step_size) {
+                obs = min_step_size;
+            } 
+            else {
+                obs = min_obstacle_distance;
+            }            
+        }
+        else { //obs free
+            obs = max_step_size;
+        }
+
+        double seg_len = arc[i + 1] - arc[i];
+        double weight = 0.5 + std::pow(max_step_size / (obs + eps), 1.3);
+        std::cout << "Segment " << i << " - Obs: " << obs << ", Weight: " << weight << std::endl;
+        total_weighted += seg_len * weight;
+        weighted.push_back(total_weighted);
+    }
+
+    // 3) 균일한 가중 누적 간격으로 리샘플링
+    std::vector<Eigen::Vector2d> new_path;
+    new_path.reserve(target_points);
+    new_path.push_back(path.front());
+
+    double step_w = total_weighted / static_cast<double>(target_points - 1);
+    double target_w = step_w;
+    std::size_t seg = 0;
+
+    for (std::size_t k = 1; k + 1 < target_points; ++k) {
+        while (seg + 1 < weighted.size() && weighted[seg + 1] < target_w) {
+            ++seg;
+        }
+        if (seg + 1 >= weighted.size()) {
+            new_path.push_back(path.back());
+            target_w += step_w;
+            continue;
+        }
+        double w0 = weighted[seg];
+        double w1 = weighted[seg + 1];
+        double denom = std::max(1e-9, w1 - w0);
+        double ratio = (target_w - w0) / denom;
+        ratio = std::min(1.0, std::max(0.0, ratio));
+        Eigen::Vector2d pt = path[seg] + ratio * (path[seg + 1] - path[seg]);
+        new_path.push_back(pt);
+        target_w += step_w;
+    }
+
+    new_path.push_back(path.back());
+    return new_path;
+}
+
 std::vector<Eigen::Vector2d> adaptiveSpacing(const std::vector<Eigen::Vector2d>& path, double min_step_size, double max_step_size) {
+    if (path.empty()) {
+        std::cerr << "Adaptive spacing failed: Path is empty." << std::endl;
+        return path;
+    }
+
     std::vector<Eigen::Vector2d> new_path;
     new_path.push_back(path[0]);
 

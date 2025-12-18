@@ -3,7 +3,7 @@
     <arg name="path_planner" default="QP"/>
     <arg name="dataset" default="full"/>
     
-    <!-- QP type: uniform: 0, adaptive: 1 -->
+    <!-- QP type: uniform: 0, adaptive: 1, adaptiveFixedN: 2 -->
     <rosparam param="move_base/QP_type"> 1 </rosparam>
 
 
