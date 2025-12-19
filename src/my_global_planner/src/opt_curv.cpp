@@ -776,72 +776,48 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
 
-    // Construct extraction matrix : b component extraction for first derivative x'(t=0)
-    // Sparse extraction matrices
-    typedef Eigen::Triplet<double> T; // Triplet 정의를 함수 최상단으로 이동
+    // Construct Sparse extraction matrix : b component extraction for first derivative x'(t=0)
+    typedef Eigen::Triplet<double> T;
+    std::vector<T> triplets_b;
+    std::vector<T> triplets_c;
+    std::vector<T> triplets_bcd;
+    triplets_b.reserve(num_splines + 3);
+    triplets_c.reserve(num_splines + 2);
+    triplets_bcd.reserve(num_splines * 3);
 
-    // --- [최적화 1] 포인트 수에만 의존하는 정적 행렬 캐싱 ---
-    static std::size_t last_num_points = 0;
-    static Eigen::SparseMatrix<double> A_ex_b, A_ex_c, A_ex_bcd, Q_E_sp;
-    
-    // OSQP 재사용 변수
-    static OSQPWorkspace* work = nullptr;
-    static OSQPData* osqp_data = nullptr;
-    static OSQPSettings* osqp_settings = nullptr;
+    for (int i = 0; i < num_splines; ++i) {
+        triplets_b.emplace_back(i, i * 4 + 1, 1.0);
+        triplets_c.emplace_back(i, i * 4 + 2, 2.0);
 
-    if (last_num_points != num_points) {
-        std::vector<T> triplets_b, triplets_c, triplets_bcd, triplets_qe;
-        triplets_b.reserve(num_splines + 3);
-        triplets_c.reserve(num_splines + 2);
-        triplets_bcd.reserve(num_splines * 3);
-        triplets_qe.reserve(num_points * 9);
-
-        for (int i = 0; i < num_splines; ++i) {
-            triplets_b.emplace_back(i, i * 4 + 1, 1.0);
-            triplets_c.emplace_back(i, i * 4 + 2, 2.0);
-            triplets_bcd.emplace_back(i * 3, i * 4 + 1, 1.0);
-            triplets_bcd.emplace_back(i * 3 + 1, i * 4 + 2, 1.0);
-            triplets_bcd.emplace_back(i * 3 + 2, i * 4 + 3, 1.0);
-        }
-        int last_base = static_cast<int>(num_splines * 4 - 4);
-        triplets_b.emplace_back(num_points - 1, last_base + 1, 1.0);
-        triplets_b.emplace_back(num_points - 1, last_base + 2, 2.0);
-        triplets_b.emplace_back(num_points - 1, last_base + 3, 3.0);
-        triplets_c.emplace_back(num_points - 1, last_base + 2, 2.0);
-        triplets_c.emplace_back(num_points - 1, last_base + 3, 6.0);
-
-        A_ex_b.resize(num_points, num_splines * 4);
-        A_ex_c.resize(num_points, num_splines * 4);
-        A_ex_bcd.resize(num_points * 3, num_splines * 4);
-        A_ex_b.setFromTriplets(triplets_b.begin(), triplets_b.end());
-        A_ex_c.setFromTriplets(triplets_c.begin(), triplets_c.end());
-        A_ex_bcd.setFromTriplets(triplets_bcd.begin(), triplets_bcd.end());
-
-        Eigen::Matrix3d q_block;
-        q_block << 1, 1, 1, 1, 4.0/3.0, 3.0/2.0, 1, 3.0/2.0, 9.0/5.0;
-        for (int i = 0; i < num_points; ++i) {
-            for(int r=0; r<3; ++r) for(int c=0; c<3; ++c)
-                triplets_qe.emplace_back(i*3+r, i*3+c, q_block(r,c));
-        }
-        Q_E_sp.resize(num_points * 3, num_points * 3);
-        Q_E_sp.setFromTriplets(triplets_qe.begin(), triplets_qe.end());
-        Q_E_sp.makeCompressed();
-
-        if (work) { osqp_cleanup(work); work = nullptr; }
-        last_num_points = num_points;
+        triplets_bcd.emplace_back(i * 3    , i * 4 + 1, 1.0);
+        triplets_bcd.emplace_back(i * 3 + 1, i * 4 + 2, 1.0);
+        triplets_bcd.emplace_back(i * 3 + 2, i * 4 + 3, 1.0);
     }
+    int last_base = static_cast<int>(num_splines * 4 - 4);
+    triplets_b.emplace_back(num_points - 1, last_base + 1, 1.0);
+    triplets_b.emplace_back(num_points - 1, last_base + 2, 2.0);
+    triplets_b.emplace_back(num_points - 1, last_base + 3, 3.0);
+
+    triplets_c.emplace_back(num_points - 1, last_base + 2, 2.0);
+    triplets_c.emplace_back(num_points - 1, last_base + 3, 6.0);
+
+    Eigen::SparseMatrix<double> A_ex_b(num_points, num_splines * 4);
+    Eigen::SparseMatrix<double> A_ex_c(num_points, num_splines * 4);
+    Eigen::SparseMatrix<double> A_ex_bcd(num_points * 3, num_splines * 4);
+    A_ex_b.setFromTriplets(triplets_b.begin(), triplets_b.end());
+    A_ex_c.setFromTriplets(triplets_c.begin(), triplets_c.end());
+    A_ex_bcd.setFromTriplets(triplets_bcd.begin(), triplets_bcd.end());
     tick(t_triplet);
 
     Eigen::SparseMatrix<double> A_sp = A.sparseView();
     Eigen::SparseMatrix<double> AT_sp = A_sp.transpose();
-    Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> A_solver;
-    Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> AT_solver;
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> A_solver;
+    Eigen::SparseLU<Eigen::SparseMatrix<double>> AT_solver;
     A_solver.analyzePattern(A_sp);
     A_solver.factorize(A_sp);
     AT_solver.analyzePattern(AT_sp);
     AT_solver.factorize(AT_sp);
     tick(t_factor);
-
     Eigen::MatrixXd T_c = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
     tick(t_Tc);
 
@@ -932,28 +908,27 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::MatrixXd T_qnx = T_q * N_x;
     Eigen::MatrixXd T_qny = T_q * N_y;
 
-    // // Sparse Q_E -> Q_E_sp
-    // std::vector<Eigen::Triplet<double>> triplets;
-    // triplets.reserve(num_points * 9); 
+    // Sparse Q_E -> Q_E_sp
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(num_points * 9); 
 
-    // Eigen::Matrix3d block;
-    // block << 1, 1, 1,
-    //          1, 4.0/3.0, 3.0/2.0,
-    //          1, 3.0/2.0, 9.0/5.0;
+    Eigen::Matrix3d block;
+    block << 1, 1, 1,
+             1, 4.0/3.0, 3.0/2.0,
+             1, 3.0/2.0, 9.0/5.0;
 
-    // for (int i = 0; i < num_points; ++i) {
-    //     int base = i * 3;
-    //     // 3x3 블록의 원소들을 하나씩 Triplet에 넣습니다.
-    //     for (int row = 0; row < 3; ++row) {
-    //         for (int col = 0; col < 3; ++col) {
-    //             triplets.emplace_back(base + row, base + col, block(row, col));
-    //         }
-    //     }
-    // }
+    for (int i = 0; i < num_points; ++i) {
+        int base = i * 3;
+        for (int row = 0; row < 3; ++row) {
+            for (int col = 0; col < 3; ++col) {
+                triplets.emplace_back(base + row, base + col, block(row, col));
+            }
+        }
+    }
     
-    // Eigen::SparseMatrix<double> Q_E_sp(num_points * 3, num_points * 3);
-    // Q_E_sp.setFromTriplets(triplets.begin(), triplets.end());
-    // Q_E_sp.makeCompressed();
+    Eigen::SparseMatrix<double> Q_E_sp(num_points * 3, num_points * 3);
+    Q_E_sp.setFromTriplets(triplets.begin(), triplets.end());
+    Q_E_sp.makeCompressed();
     
     Eigen::VectorXd T_c_p_x = T_c * p_x;
     Eigen::VectorXd T_c_p_y = T_c * p_y;
@@ -1044,43 +1019,67 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     accum_stage(wall_time_matrix_build);
 
     // Use upper triangular part of H
-    csc* P_csc = denseToCSC(H.triangularView<Eigen::Upper>());
-    csc* A_csc = denseToCSC(E);
+    Eigen::MatrixXd H_upper = H.triangularView<Eigen::Upper>();
+
+    // Log sparsity information for profiling
+
+    // Use OSQP settings as usual for dense matrix optimization
+    OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
+    osqp_set_default_settings(settings);
+
+    // rho: 0.5 adap, 0.7 uni?
+    settings->rho = 0.7;
+    settings->alpha = 1.6;
+    settings->verbose = 1;
+    settings->warm_start = 1;
+    // settings->eps_abs = 1e-2;
+    // settings->eps_rel = 1e-2;
+    // settings->adaptive_rho_interval = 10;
+    // settings->polish = 1;
+    // settings->polish_refine_iter = 3;
+    
+    // OSQP data
+    OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
+    data->n = H_upper.rows();
+    data->m = E.rows();
+    data->P = denseToCSC(H_upper);
+    data->q = f.data();
+    data->A = denseToCSC(E);
+    data->l = l.data();
+    data->u = u.data();
     accum_stage(wall_time_csc);
 
-    if (work == nullptr) {
-        osqp_settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
-        osqp_set_default_settings(osqp_settings);
-        osqp_settings->rho = 0.7; osqp_settings->alpha = 1.6; osqp_settings->warm_start = 1;
-
-        osqp_data = (OSQPData *)c_malloc(sizeof(OSQPData));
-        osqp_data->n = P_csc->n; osqp_data->m = A_csc->m;
-        osqp_data->P = P_csc; osqp_data->A = A_csc;
-        osqp_data->q = (c_float*)c_malloc(sizeof(c_float) * osqp_data->n);
-        osqp_data->l = (c_float*)c_malloc(sizeof(c_float) * osqp_data->m);
-        osqp_data->u = (c_float*)c_malloc(sizeof(c_float) * osqp_data->m);
-        for(int j=0; j<osqp_data->n; j++) osqp_data->q[j] = f(j);
-        for(int j=0; j<osqp_data->m; j++) { osqp_data->l[j] = l(j); osqp_data->u[j] = u(j); }
-        osqp_setup(&work, osqp_data, osqp_settings);
-    } else {
-        osqp_update_P(work, P_csc->x, NULL, P_csc->nzmax);
-        osqp_update_A(work, A_csc->x, NULL, A_csc->nzmax);
-        std::vector<c_float> f_c(f.data(), f.data() + f.size());
-        std::vector<c_float> l_c(l.data(), l.data() + l.size()), u_c(u.data(), u.data() + u.size());
-        osqp_update_lin_cost(work, f_c.data());
-        osqp_update_bounds(work, l_c.data(), u_c.data());
-        c_free(P_csc->x); c_free(P_csc->i); c_free(P_csc->p); c_free(P_csc);
-        c_free(A_csc->x); c_free(A_csc->i); c_free(A_csc->p); c_free(A_csc);
-    }
+    // Setup workspace
+    OSQPWorkspace *work;
+    osqp_setup(&work, data, settings);
     accum_stage(wall_time_setup);
-    osqp_solve(work);
-    wall_time_solve += (ros::WallTime::now() - wall_stage_start).toSec();
 
-    Eigen::VectorXd solution(num_points);
-    for (int i = 0; i < num_points; ++i) solution[i] = work->solution->x[i];
+    // Solve the problem
+    ros::WallTime wall_solve_start = ros::WallTime::now();
+    osqp_solve(work);
+    wall_time_solve += (ros::WallTime::now() - wall_solve_start).toSec();
+    wall_stage_start = ros::WallTime::now();
+
+    Eigen::VectorXd solution(data->n);
+    for (int i = 0; i < data->n; ++i) {
+        solution[i] = work->solution->x[i];
+    }
+
     int success = work->info->status_val;
 
-    accum_stage(wall_time_cleanup); // 사실상 cleanup은 static이라 거의 없음
+    // Clean up
+    osqp_cleanup(work);
+    c_free(data->P->x);
+    c_free(data->P->i);
+    c_free(data->P->p);
+    c_free(data->P);
+    c_free(data->A->x);
+    c_free(data->A->i);
+    c_free(data->A->p);
+    c_free(data->A);
+    c_free(data);
+    c_free(settings);
+    accum_stage(wall_time_cleanup);
 
     double total = (ros::WallTime::now() - wall_getalpha_start).toSec();
     double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup;
