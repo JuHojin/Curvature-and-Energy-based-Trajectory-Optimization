@@ -738,11 +738,10 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
                                                      const Eigen::MatrixXd& A,
                                                      double curvature_bnd,
                                                      double start_angle, double end_angle, double gamma) {
-    bool log_sparsity = false;
-    ros::param::param<bool>("my_global_planner/log_qp_sparsity", log_sparsity, false);
 
     ros::WallTime wall_getalpha_start = ros::WallTime::now();
     ros::WallTime wall_stage_start = wall_getalpha_start;
+    
     auto accum_stage = [&](double& slot) {
         ros::WallTime now = ros::WallTime::now();
         slot += (now - wall_stage_start).toSec();
@@ -754,6 +753,24 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     double wall_time_setup = 0.0;
     double wall_time_solve = 0.0;
     double wall_time_cleanup = 0.0;
+
+    // Fine-grained matrix-build timing
+    ros::WallTime wall_build = ros::WallTime::now();
+    double t_triplet = 0.0;
+    double t_factor = 0.0;
+    double t_normal_triplet = 0.0;
+    double t_normal_set = 0.0;
+    double t_solve_px = 0.0;
+    double t_solve_py = 0.0;
+    double t_curv = 0.0;
+    double t_energy = 0.0;
+    double t_H = 0.0;
+    double t_constraints = 0.0;
+    auto tick = [&](double& slot) {
+        ros::WallTime now = ros::WallTime::now();
+        slot += (now - wall_build).toSec();
+        wall_build = now;
+    };
 
     std::size_t num_points = path.size();
     std::size_t num_splines = num_points - 1;
@@ -790,6 +807,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     A_ex_b.setFromTriplets(triplets_b.begin(), triplets_b.end());
     A_ex_c.setFromTriplets(triplets_c.begin(), triplets_c.end());
     A_ex_bcd.setFromTriplets(triplets_bcd.begin(), triplets_bcd.end());
+    tick(t_triplet);
 
     Eigen::SparseMatrix<double> A_sp = A.sparseView();
     Eigen::SparseMatrix<double> AT_sp = A_sp.transpose();
@@ -799,19 +817,8 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     A_solver.factorize(A_sp);
     AT_solver.analyzePattern(AT_sp);
     AT_solver.factorize(AT_sp);
-
-    if (log_sparsity) {
-        logMatrixSparsity("A", A);
-        logMatrixSparsity("A_ex_b", A_ex_b);
-        logMatrixSparsity("A_ex_c", A_ex_c);
-        logMatrixSparsity("A_ex_bcd", A_ex_bcd);
-    }
-
+    tick(t_factor);
     Eigen::MatrixXd T_c = AT_solver.solve(Eigen::MatrixXd(A_ex_c.transpose())).transpose();
-
-    if (log_sparsity) {
-        logMatrixSparsity("T_c", T_c);
-    }
 
     // Construct normal vector matrix (sparse)
     std::vector<T> triplets_Nx;
@@ -838,16 +845,13 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
             triplets_Ny.emplace_back(j + 1, 0, normal_vectors[0].y());
         }
     }
+    tick(t_normal_triplet);
 
     Eigen::SparseMatrix<double> N_x(num_splines * 4, num_points);
     Eigen::SparseMatrix<double> N_y(num_splines * 4, num_points);
     N_x.setFromTriplets(triplets_Nx.begin(), triplets_Nx.end());
     N_y.setFromTriplets(triplets_Ny.begin(), triplets_Ny.end());
-
-    if (log_sparsity) {
-        logMatrixSparsity("N_x", N_x);
-        logMatrixSparsity("N_y", N_y);
-    }
+    tick(t_normal_set);
 
     // Construct reference path vector
     Eigen::VectorXd p_x = Eigen::VectorXd::Zero(num_splines * 4);
@@ -879,7 +883,9 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     // Calculate derivatives: x', y', x'y'
     Eigen::VectorXd px_solution = A_solver.solve(p_x);
+    tick(t_solve_px);
     Eigen::VectorXd py_solution = A_solver.solve(p_y);
+    tick(t_solve_py);
     Eigen::VectorXd x_dot = A_ex_b * px_solution;
     Eigen::VectorXd y_dot = A_ex_b * py_solution;
     Eigen::VectorXd x_dot_y_dot = -2 * x_dot.array() * y_dot.array();
@@ -894,23 +900,12 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::VectorXd curvatures_den = curv_den.array().inverse();
     curvatures_den = curvatures_den.unaryExpr([](double v) { return std::isfinite(v) ? v : 0.0; });
     Eigen::VectorXd curvatures_sq_den = curvatures_den.array().square();
+    tick(t_curv);
 
     // Energy penalty
     Eigen::MatrixXd T_q = AT_solver.solve(Eigen::MatrixXd(A_ex_bcd.transpose())).transpose();
     Eigen::MatrixXd T_qnx = T_q * N_x;
     Eigen::MatrixXd T_qny = T_q * N_y;
-
-    // Profiling helper (enable if needed)
-    // double A_sparsity = calculateSparsity(A);
-    // double T_c_sparsity = calculateSparsity(T_c);
-    // double T_q_sparsity = calculateSparsity(T_q);
-    // double T_qnx_sparsity = calculateSparsity(T_qnx);
-    // double T_qny_sparsity = calculateSparsity(T_qny);
-    // ROS_INFO_STREAM("[Sparsity] A=" << A_sparsity * 100.0
-    //                 << "%, Tc=" << T_c_sparsity * 100.0
-    //                 << "%, Tq=" << T_q_sparsity * 100.0
-    //                 << "%, Tqnx=" << T_qnx_sparsity * 100.0
-    //                 << "%, Tqny=" << T_qny_sparsity * 100.0 << "%");
 
     Eigen::MatrixXd Q_E = Eigen::MatrixXd::Zero(num_points * 3, num_points * 3);
     Eigen::MatrixXd block(3, 3);
@@ -927,6 +922,8 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::VectorXd T_q_p_x = T_q * p_x;
     Eigen::VectorXd T_q_p_y = T_q * p_y;
 
+    tick(t_energy);
+
     // Objective function formulation
     Eigen::MatrixXd P_xx = (curvatures_sq_den.array() * y_dot_sq.array()).matrix().asDiagonal();
     Eigen::MatrixXd P_yy = (curvatures_sq_den.array() * x_dot_sq.array()).matrix().asDiagonal();
@@ -934,17 +931,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
 
     Eigen::MatrixXd T_nx = T_c * N_x;
     Eigen::MatrixXd T_ny = T_c * N_y;
-
-    if (log_sparsity) {
-        logMatrixSparsity("T_q", T_q);
-        logMatrixSparsity("T_qnx", T_qnx);
-        logMatrixSparsity("T_qny", T_qny);
-        logMatrixSparsity("T_nx", T_nx);
-        logMatrixSparsity("T_ny", T_ny);
-        logMatrixSparsity("P_xx", P_xx);
-        logMatrixSparsity("P_yy", P_yy);
-        logMatrixSparsity("P_xy", P_xy);
-    }
 
     Eigen::MatrixXd H_x = T_nx.transpose() * P_xx * T_nx;
     Eigen::MatrixXd H_xy = T_ny.transpose() * P_xy * T_nx;
@@ -962,6 +948,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     Eigen::VectorXd f_k = f_x + f_xy + f_y;
     Eigen::VectorXd f_E = 2.0 * (T_qnx.transpose() * (Q_E * T_q_p_x)) + 2.0 * (T_qny.transpose() * (Q_E * T_q_p_y));
     Eigen::VectorXd f = f_k + gamma * f_E;
+    tick(t_H);
 
     // Constraint function formulation
     Eigen::VectorXd P_x = curvatures_den.array() * y_dot.array();
@@ -1000,52 +987,21 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     }
     u.segment(num_points, num_points) = curv_constraints_ge;
     l.segment(num_points, num_points) = curv_constraints_le;
+    tick(t_constraints);
 
-    if (log_sparsity) {
-        logMatrixSparsity("E_curvature", E_curvature);
-        logMatrixSparsity("E", E);
-        logMatrixSparsity("H", H);
-    }
+    // Debug: detailed matrix-build timing
+    ROS_INFO_STREAM("[Timing][Build] triplet=" << t_triplet
+        << ", factor=" << t_factor
+        << ", normal_triplet=" << t_normal_triplet
+        << ", normal_set=" << t_normal_set
+        << ", solve_px=" << t_solve_px
+        << ", solve_py=" << t_solve_py
+        << ", curv=" << t_curv
+        << ", energy=" << t_energy
+        << ", H/f=" << t_H
+        << ", constraints=" << t_constraints);
 
     accum_stage(wall_time_matrix_build);
-
-    // Optional debug: print constraint matrices / eigenvalues / sparsity.
-    // Disabled by default for performance; keep here for future profiling.
-    /*
-    std::stringstream ss_E, ss_u, ss_l;
-    ss_E << E;
-    ss_u << (E_curvature.inverse() * curv_constraints_ge).transpose();
-    ss_l << (E_curvature.inverse() * curv_constraints_le).transpose();
-
-    // ROS_INFO_STREAM("Matrix E:\n" << ss_E.str());
-    ROS_INFO_STREAM("Vector u:\n" << ss_u.str());
-    ROS_INFO_STREAM("Vector l:\n" << ss_l.str());
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(H);
-    ROS_INFO_STREAM("Eigenvalues of H: " << eigen_solver.eigenvalues().transpose());
-
-    // Sparsity calculation and Sparse/Dense optimization branching (keep for future profiling)
-    double A_ex_b_sparsity = calculateSparsity(A_ex_b);
-    double A_ex_c_sparsity = calculateSparsity(A_ex_c);
-    double A_ex_bcd_sparsity = calculateSparsity(A_ex_bcd);
-    double N_x_sparsity = calculateSparsity(N_x);
-    double N_y_sparsity = calculateSparsity(N_y);
-    double T_nx_sparsity = calculateSparsity(T_nx);
-    double T_ny_sparsity = calculateSparsity(T_ny);
-    double E_curvature_sparsity = calculateSparsity(E_curvature);
-    double E_sparsity = calculateSparsity(E);
-    double H_sparsity = calculateSparsity(H);
-    ROS_INFO_STREAM("[Sparsity] A_ex_b=" << A_ex_b_sparsity * 100.0
-                    << "%, A_ex_c=" << A_ex_c_sparsity * 100.0
-                    << "%, A_ex_bcd=" << A_ex_bcd_sparsity * 100.0
-                    << "%, N_x=" << N_x_sparsity * 100.0
-                    << "%, N_y=" << N_y_sparsity * 100.0
-                    << "%, T_nx=" << T_nx_sparsity * 100.0
-                    << "%, T_ny=" << T_ny_sparsity * 100.0
-                    << "%, E_curvature=" << E_curvature_sparsity * 100.0
-                    << "%, E=" << E_sparsity * 100.0
-                    << "%, H=" << H_sparsity * 100.0 << "%");
-    */
 
     // Use upper triangular part of H
     Eigen::MatrixXd H_upper = H.triangularView<Eigen::Upper>();
@@ -1056,15 +1012,6 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     osqp_set_default_settings(settings);
 
-    // printf("default eps_abs = %g\n", settings->eps_abs);
-    // printf("default eps_rel = %g\n", settings->eps_rel);
-    // printf("default rho     = %g\n", settings->rho);
-    // printf("default alpha   = %g\n", settings->alpha);
-    // printf("default max_iter= %d\n", settings->max_iter);
-    // printf("default polish  = %d\n", settings->polish);
-    // printf("default scaled_termination = %d\n", settings->scaled_termination);
-    // printf("default adaptive_rho = %d\n", settings->adaptive_rho);
-    // printf("default adaptive_rho_interval = %d\n", settings->adaptive_rho_interval);
     // rho: 0.5 adap, 0.7 uni?
     settings->rho = 0.7;
     settings->alpha = 1.6;
