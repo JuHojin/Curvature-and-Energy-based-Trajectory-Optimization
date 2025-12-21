@@ -286,16 +286,16 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
                        wall_time_transform + wall_time_publish + wall_time_osqp +
                        wall_time_curvature + wall_time_travel;
     double wall_time_other = wall_time_total_qp - accounted;
-    ROS_INFO_STREAM("[Timing][QP] total=" << wall_time_total_qp
-                    << " | spacing=" << wall_time_spacing
-                    << ", matrix_normals=" << wall_time_matrix_normals
-                    << ", boundaries=" << wall_time_boundaries
-                    << ", transform=" << wall_time_transform
-                    << ", publish=" << wall_time_publish
-                    << ", osqp=" << wall_time_osqp
-                    << ", curvature=" << wall_time_curvature
-                    << ", travel=" << wall_time_travel
-                    << ", other=" << wall_time_other);
+    // ROS_INFO_STREAM("[Timing][QP] total=" << wall_time_total_qp
+    //                 << " | spacing=" << wall_time_spacing
+    //                 << ", matrix_normals=" << wall_time_matrix_normals
+    //                 << ", boundaries=" << wall_time_boundaries
+    //                 << ", transform=" << wall_time_transform
+    //                 << ", publish=" << wall_time_publish
+    //                 << ", osqp=" << wall_time_osqp
+    //                 << ", curvature=" << wall_time_curvature
+    //                 << ", travel=" << wall_time_travel
+    //                 << ", other=" << wall_time_other);
 
     std_msgs::Bool status_msg;
     status_msg.data = success_flag;
@@ -636,11 +636,11 @@ void constrainDeviationToPreventCrossing(const std::vector<Eigen::Vector2d>& pat
 
         if (t < dev_list[i]) {
             dev_list[i] = std::max(0.0, t - Constant::DEV_EPSILON);
-            ROS_INFO("Cutting deviation at index %zu, t = %f", i, t);
+            // ROS_INFO("Cutting deviation at index %zu, t = %f", i, t);
         }
         if (s < dev_list[i + 1]) {
             dev_list[i + 1] = std::max(0.0, s - Constant::DEV_EPSILON);
-            ROS_INFO("Cutting deviation at index %zu, s = %f", i + 1, s);
+            // ROS_INFO("Cutting deviation at index %zu, s = %f", i + 1, s);
         }
     }
 }
@@ -1010,17 +1010,17 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     tick(t_constraints);
 
     // Debug: detailed matrix-build timing
-    ROS_INFO_STREAM("[Timing][Build] triplet=" << t_triplet
-        << ", factor=" << t_factor
-        << ", Tc=" << t_Tc
-        << ", normal_triplet=" << t_normal_triplet
-        << ", normal_set=" << t_normal_set
-        << ", solve_px=" << t_solve_px
-        << ", solve_py=" << t_solve_py
-        << ", curv=" << t_curv
-        << ", energy=" << t_energy
-        << ", H/f=" << t_H
-        << ", constraints=" << t_constraints);
+    // ROS_INFO_STREAM("[Timing][Build] triplet=" << t_triplet
+    //     << ", factor=" << t_factor
+    //     << ", Tc=" << t_Tc
+    //     << ", normal_triplet=" << t_normal_triplet
+    //     << ", normal_set=" << t_normal_set
+    //     << ", solve_px=" << t_solve_px
+    //     << ", solve_py=" << t_solve_py
+    //     << ", curv=" << t_curv
+    //     << ", energy=" << t_energy
+    //     << ", H/f=" << t_H
+    //     << ", constraints=" << t_constraints);
 
     accum_stage(wall_time_matrix_build);
 
@@ -1090,13 +1090,13 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     double total = (ros::WallTime::now() - wall_getalpha_start).toSec();
     double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup;
     double other = total - accounted;
-    ROS_INFO_STREAM("[Timing][OSQP] total=" << total
-                    << " | matrix_build=" << wall_time_matrix_build
-                    << ", csc=" << wall_time_csc
-                    << ", setup=" << wall_time_setup
-                    << ", solve=" << wall_time_solve
-                    << ", cleanup=" << wall_time_cleanup
-                    << ", other=" << other);
+    // ROS_INFO_STREAM("[Timing][OSQP] total=" << total
+    //                 << " | matrix_build=" << wall_time_matrix_build
+    //                 << ", csc=" << wall_time_csc
+    //                 << ", setup=" << wall_time_setup
+    //                 << ", solve=" << wall_time_solve
+    //                 << ", cleanup=" << wall_time_cleanup
+    //                 << ", other=" << other);
 
     return std::make_pair(solution, success);
 }

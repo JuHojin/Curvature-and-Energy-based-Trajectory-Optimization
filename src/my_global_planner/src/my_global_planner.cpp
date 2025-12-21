@@ -383,16 +383,16 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
                            wall_time_uniform_spacing + wall_time_qp + wall_time_bspline +
                            wall_time_curvature + wall_time_velocity;
         double wall_time_other = planning_wall_time - accounted;
-        ROS_INFO_STREAM("[Timing][Wall] total=" << planning_wall_time
-                        << " | preprocess=" << wall_time_preprocess
-                        << ", astar=" << wall_time_astar
-                        << ", post=" << wall_time_post_smooth
-                        << ", uniform=" << wall_time_uniform_spacing
-                        << ", qp=" << wall_time_qp
-                        << ", bspline=" << wall_time_bspline
-                        << ", curvature=" << wall_time_curvature
-                        << ", velocity=" << wall_time_velocity
-                        << ", other=" << wall_time_other);
+        // ROS_INFO_STREAM("[Timing][Wall] total=" << planning_wall_time
+        //                 << " | preprocess=" << wall_time_preprocess
+        //                 << ", astar=" << wall_time_astar
+        //                 << ", post=" << wall_time_post_smooth
+        //                 << ", uniform=" << wall_time_uniform_spacing
+        //                 << ", qp=" << wall_time_qp
+        //                 << ", bspline=" << wall_time_bspline
+        //                 << ", curvature=" << wall_time_curvature
+        //                 << ", velocity=" << wall_time_velocity
+        //                 << ", other=" << wall_time_other);
 
         plan = final_plan_world.poses;
         return a_star_success;
