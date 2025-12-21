@@ -3,7 +3,9 @@
 #include <ros/param.h>
 #include <Eigen/Sparse>
 #include <cmath>
+#include <iostream>
 #include <limits>
+#include <algorithm>
 #include <tf/tf.h>
 #include <numeric>
 #include <std_msgs/Bool.h>
@@ -236,6 +238,10 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Get curvature and velocity profile
         ros::WallTime curvature_stage_start = ros::WallTime::now();
+        double path_length = getPathLength(new_path_m);
+        double path_energy = getPathEnergy(new_path_m);
+        ROS_INFO("Opt. Step [%d] | Path Length: %f", i + 1, path_length);
+        ROS_INFO("Opt. Step [%d] | Path Energy: %f", i + 1, path_energy);
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(new_path_m);
         auto velocity_result = getVelocityProfile(new_path_m, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         wall_time_curvature += (ros::WallTime::now() - curvature_stage_start).toSec();
@@ -257,21 +263,21 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
-        if (i >= 3 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
-            ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
-            // Revert to the previous path
-            new_path = path; 
-            // Revert to the previous boundaries
-            std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
-            std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
-            nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
-            nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
-            publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
-            publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
+        // if (i >= 3 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
+        //     ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
+        //     // Revert to the previous path
+        //     new_path = path; 
+        //     // Revert to the previous boundaries
+        //     std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
+        //     std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
+        //     nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
+        //     nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
+        //     publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
+        //     publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
 
-            success_flag = true;
-            break;
-        }
+        //     success_flag = true;
+        //     break;
+        // }
     }
 
     ros::WallTime wall_qp_end = ros::WallTime::now();
@@ -436,8 +442,8 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
     constrainDeviationToPreventCrossing(path, inverted_normal_vectors, boundaries.right_bnd.distances);
 
     // Constrain the deviation change
-    constrainDeviationChange(boundaries.left_bnd.distances);
-    constrainDeviationChange(boundaries.right_bnd.distances);
+    // constrainDeviationChange(boundaries.left_bnd.distances);
+    // constrainDeviationChange(boundaries.right_bnd.distances);
 
     // Create boundary points to publish
     for (size_t i = 0; i < n; ++i) {
@@ -1030,7 +1036,7 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     // rho: 0.5 adap, 0.7 uni?
     settings->rho = 0.7;
     settings->alpha = 1.6;
-    settings->verbose = 1;
+    settings->verbose = 0;
     settings->warm_start = 1;
     // settings->eps_abs = 1e-2;
     // settings->eps_rel = 1e-2;

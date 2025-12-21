@@ -7,7 +7,7 @@ namespace Constant {
     constexpr double MAP_RESOLUTION = 0.05;
 
     // Boundary
-    constexpr unsigned int DEV_MAX = 15;
+    constexpr unsigned int DEV_MAX = 30;
     constexpr unsigned int DEV_DOT = 1;
     constexpr unsigned int DEV_EPSILON = 1; // trimming parameter when boundaries are crossed
 
@@ -24,8 +24,8 @@ namespace Constant {
     constexpr double CURVATURE_BOUND_DECAY = 0.6;
     constexpr unsigned int MAX_OPT_ITER = 10;
     constexpr unsigned int MAX_OPT_ITER_REPLAN = 3;
-    // 0, 1e-7
-    constexpr double GAMMA = 0; 
+    // 0, 1e-8
+    constexpr double GAMMA = 0.1; 
     
     // Velocity Profile [SI]
     constexpr double MAX_VEL = 5;

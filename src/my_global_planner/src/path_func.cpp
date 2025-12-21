@@ -369,6 +369,31 @@ std::pair<Eigen::VectorXd, Eigen::MatrixXd> getVelocityProfile(const nav_msgs::P
     return getVelocityProfile(path, curvature, init_velocity, max_vel, max_ax, max_ay);
 }
 
+double getPathLength(const std::vector<Eigen::Vector2d>& path) {
+    if (path.size() < 2) {
+        return 0.0;
+    }
+
+    double total_length = 0.0;
+    for (size_t i = 1; i < path.size(); ++i) {
+        total_length += (path[i] - path[i - 1]).norm();
+    }
+    return total_length;
+}
+
+double getPathEnergy(const std::vector<Eigen::Vector2d>& path) {
+    if (path.size() < 2) {
+        return 0.0;
+    }
+
+    double total_energy = 0.0;
+    for (size_t i = 1; i < path.size(); ++i) {
+        // Sum of squared segment lengths
+        total_energy += (path[i] - path[i - 1]).squaredNorm();
+    }
+    return total_energy;
+}
+
 // ========================================
 // Curvatures
 // ========================================

@@ -204,7 +204,7 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         double wall_time_velocity = 0.0;
 
         // Measure planning calculation time: start
-        ros::Time start_time = ros::Time::now();
+        ros::WallTime start_time = ros::WallTime::now();
 
         // Convert start and goal point: (Real) World -> Map
         unsigned int start_x, start_y, goal_x, goal_y;
@@ -371,9 +371,9 @@ bool MyGlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const ge
         record_stage(wall_time_velocity);
 
         // Measure planning calculation time: end
-        ros::Time end_time = ros::Time::now();
+        ros::WallTime end_time = ros::WallTime::now();
         double planning_calculation_time = (end_time - start_time).toSec();
-        ROS_INFO("===== Planning calculation time: %f seconds =====", planning_calculation_time);
+        ROS_INFO("===== Planning calculation time: %.7f seconds =====", planning_calculation_time);
         std_msgs::Float64 planning_calculation_time_msg;
         planning_calculation_time_msg.data = planning_calculation_time;
         planning_calculation_time_publisher.publish(planning_calculation_time_msg);
