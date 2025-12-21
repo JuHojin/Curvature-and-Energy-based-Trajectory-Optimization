@@ -18,7 +18,7 @@ You need to clone the repository to your local machine:
 
 ```bash
 cd ~
-git clone https://github.com/takahashi-seiryu/Vehicle-Trajectory-Planning-Using-Gazebo.git
+git clone https://github.com/JuHojin/LBC_Rollout_Curv_Length_Traj_Opt.git catkin_ws
 ```
 
 **Optional:** Then rename the workspace to `catkin_ws`. You can choose another name, but we will refer to the workspace as `catkin_ws` throughout the rest of this README.
@@ -176,9 +176,59 @@ roslaunch f1tenth-sim simulator.launch
 ```bash
 echo "source ~/catkin_ws/devel_isolated/setup.bash" >> ~/.bashrc
 ```
+## Running the full stack (Simulation → Localization → Navigation → RViz → Monte Carlo)
 
-### Control
-TBD
+This project requires launching multiple ROS nodes in separate terminals.  
+We recommend using **Terminator** and splitting the window into **6 panes** (or more).
+
+### Prerequisites (every pane)
+In **every** Terminator pane, run:
+
+```bash
+cd ~/catkin_ws
+source ~/catkin_ws/devel_isolated/setup.bash
+```
+
+Tip: If you added the source ...setup.bash line to your ~/.bashrc, you only need cd ~/catkin_ws.
+
+### Launch order (recommended)
+Pane 1: Gazebo Simulator
+```bash
+roslaunch f1tenth-sim simulator.launch
+```
+Wait until Gazebo finishes loading and the vehicle/map are spawned.
+
+Pane 2: Localization (AMCL)
+```bash
+roslaunch f1tenth-sim localization.launch
+```
+Pane 3: Navigation (move_base)
+```bash
+roslaunch f1tenth-sim navigation.launch
+```
+Pane 4: RViz
+```bash
+rviz -d src/f1tenth-sim/rviz/default.rviz
+```
+Pane 5: Monte Carlo runner / evaluation
+
+**This can make plan for given fixed start-goal pair.**
+```bash
+roslaunch f1tenth-sim monte_carlo.launch
+```
+Pane 6 (Optional): Teleoperation (manual driving)
+```bash
+rosrun f1tenth-sim keyboard_teleop.py car_1
+```
+#### Notes / Troubleshooting
+If `navigation.launch/`starts before localization is ready, `move_base/`move_base may fail to plan. In that case, restart `navigation.launch/` after AMCL becomes stable.
+
+If RViz does not show the map or TF correctly, confirm that `/map`, `/tf`, and `/amcl_pose` topics are publishing.
+
+If you see Gazebo model spawn issues, double-check `GAZEBO_MODEL_PATH` settings (see troubleshooting section below).
+
+yaml
+코드 복사
 
 ### Mapping (Optional)
 If you want to add a new map, you need to generate `.yaml` and `.pgm` files. First, copy the configuration, launch, and URDF files to the designated directories.
