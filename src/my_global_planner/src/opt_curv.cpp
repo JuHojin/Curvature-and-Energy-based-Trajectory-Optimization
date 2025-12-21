@@ -14,6 +14,7 @@
 #include "opt_curv.h"
 #include "path_func.h"
 #include "constant.h"
+#include <limits> // for std::numeric_limits
 
 namespace my_global_planner {
 
@@ -74,6 +75,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         slot += (now - start).toSec();
         start = now;
     };
+    // max_iter = 15;
 
     for (i = 0; i < max_iter; ++i) {
         ros::WallTime stage_start = ros::WallTime::now();
@@ -204,33 +206,91 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         double end_angle = std::atan2(end_segment.y(), end_segment.x());
 
         // Select curvature bound method (constant/ exponential decay)
-        // double curvature_bound = CURVATURE_BOUND;
         double curvature_bound = (Constant::CURVATURE_BOUND_MAX - Constant::CURVATURE_BOUND_MIN) * std::exp(-i * Constant::CURVATURE_BOUND_DECAY) + Constant::CURVATURE_BOUND_MIN;
 
-        // Alpha calculation
+        // -------------------------------------------------------------------
+        // [Spatial Rollout Implementation]
+        // -------------------------------------------------------------------
         ros::WallTime osqp_stage_start = ros::WallTime::now();
-        auto result = getAlphaMinCurvature(path, current_boundaries.left_bnd.distances, current_boundaries.right_bnd.distances, normal_vectors, A, curvature_bound, start_angle, end_angle, Constant::GAMMA);
-        Eigen::VectorXd alpha = result.first;
-        int success = result.second;
+
+        // 1. Define Action Set (Gamma Candidates)
+        std::vector<double> gamma_candidates = {0.1, 0.09,0.08,0.07,0.06 ,0.05, 0.04,0.03,0.02, 0.01, 0.009,0.008,0.007,0.006, 0.005}; 
+        
+        double best_step_travel_time = std::numeric_limits<double>::max();
+        std::vector<Eigen::Vector2d> best_step_path;
+        bool any_gamma_solved = false;
+        double selected_gamma = -1.0;
+
+        // 2. Lookahead Simulation (Try all gammas)
+        for (double current_gamma : gamma_candidates) {
+            
+            // QP Solver (Simulation of Base Policy)
+            auto result = getAlphaMinCurvature(path, 
+                                            current_boundaries.left_bnd.distances, 
+                                            current_boundaries.right_bnd.distances, 
+                                            normal_vectors, A, curvature_bound, 
+                                            start_angle, end_angle, 
+                                            current_gamma); 
+            
+            Eigen::VectorXd alpha = result.first;
+            int success = result.second;
+
+            // Feasibility Check
+            if (success == OSQP_SOLVED) {
+                // 경로 생성 (State Transition)
+                std::vector<Eigen::Vector2d> temp_path = getPathMinCurvature(path, normal_vectors, alpha);
+                
+                // Cost Calculation (Estimated Travel Time)
+                // 1) px -> meter
+                std::vector<Eigen::Vector2d> temp_path_m = convertPx2Meter(temp_path);
+                // 2) curvature calculation
+                Eigen::VectorXd temp_curvature = getCurvatureUsingFiniteDifference(temp_path_m);
+                // 3) velocity profile generation
+                auto vel_result = getVelocityProfile(temp_path_m, temp_curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
+                Eigen::VectorXd temp_vel_profile = vel_result.first;
+                // 4) travel time (cost) calculation
+                double current_travel_time = getTravelTime(temp_path_m, temp_vel_profile);
+
+                // Policy Improvement (Selection)
+                // argmin travel time
+                if (current_travel_time < best_step_travel_time) {
+                    best_step_travel_time = current_travel_time;
+                    best_step_path = temp_path;
+                    selected_gamma = current_gamma;
+                    any_gamma_solved = true;
+                }
+            }
+        }
+        
         wall_time_osqp += (ros::WallTime::now() - osqp_stage_start).toSec();
 
-        if (success == OSQP_SOLVED) {
-            new_path = getPathMinCurvature(path, normal_vectors, alpha);
+        // 3. Update State (Move to next iteration)
+        if (any_gamma_solved) {
+            // Update with the best path
+            new_path = best_step_path;
+            
+            // Visualization
             std::vector<geometry_msgs::PoseStamped> new_path_tmp = convertVector2dToPoseStamped(new_path);
             nav_msgs::Path new_path_world = producePathMapToWorld(new_path_tmp);
             publishPath(plan_publisher_opt, new_path_world);
+            
+            ROS_INFO("!!!!===== Rollout Step [%d]: Selected Gamma = %.4f, Best Time = %.4f =====!!!!", i+1, selected_gamma, best_step_travel_time);
         } else {
-            ROS_INFO("Optimization Failed at step [%d]", i + 1);
-            new_path = path;
+            // All Gamma candidates failed (maintain existing failure handling logic)
+            ROS_WARN("!!!!===== Rollout Failed at step [%d]: All candidates failed. =====!!!!", i + 1);
+            new_path = path; // Revert
             success_flag = false;
-            // Reverting to the previous boundaries
-            std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
-            std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
-            nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
-            nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
-            publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
-            publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
-            break;
+            
+            // Reverting to the previous boundaries for safety
+            if (i > 0) {
+                std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
+                std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
+                nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
+                nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
+                publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
+                publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
+            }
+            break; // Stop iterative optimization
         }
 
         // Convert the path from px to meter for curvature calculation, velocity profile generation and travel time calculation
@@ -286,16 +346,16 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
                        wall_time_transform + wall_time_publish + wall_time_osqp +
                        wall_time_curvature + wall_time_travel;
     double wall_time_other = wall_time_total_qp - accounted;
-    ROS_INFO_STREAM("[Timing][QP] total=" << wall_time_total_qp
-                    << " | spacing=" << wall_time_spacing
-                    << ", matrix_normals=" << wall_time_matrix_normals
-                    << ", boundaries=" << wall_time_boundaries
-                    << ", transform=" << wall_time_transform
-                    << ", publish=" << wall_time_publish
-                    << ", osqp=" << wall_time_osqp
-                    << ", curvature=" << wall_time_curvature
-                    << ", travel=" << wall_time_travel
-                    << ", other=" << wall_time_other);
+    // ROS_INFO_STREAM("[Timing][QP] total=" << wall_time_total_qp
+    //                 << " | spacing=" << wall_time_spacing
+    //                 << ", matrix_normals=" << wall_time_matrix_normals
+    //                 << ", boundaries=" << wall_time_boundaries
+    //                 << ", transform=" << wall_time_transform
+    //                 << ", publish=" << wall_time_publish
+    //                 << ", osqp=" << wall_time_osqp
+    //                 << ", curvature=" << wall_time_curvature
+    //                 << ", travel=" << wall_time_travel
+    //                 << ", other=" << wall_time_other);
 
     std_msgs::Bool status_msg;
     status_msg.data = success_flag;
@@ -636,11 +696,11 @@ void constrainDeviationToPreventCrossing(const std::vector<Eigen::Vector2d>& pat
 
         if (t < dev_list[i]) {
             dev_list[i] = std::max(0.0, t - Constant::DEV_EPSILON);
-            ROS_INFO("Cutting deviation at index %zu, t = %f", i, t);
+            // ROS_INFO("Cutting deviation at index %zu, t = %f", i, t);
         }
         if (s < dev_list[i + 1]) {
             dev_list[i + 1] = std::max(0.0, s - Constant::DEV_EPSILON);
-            ROS_INFO("Cutting deviation at index %zu, s = %f", i + 1, s);
+            // ROS_INFO("Cutting deviation at index %zu, s = %f", i + 1, s);
         }
     }
 }
@@ -1010,17 +1070,17 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     tick(t_constraints);
 
     // Debug: detailed matrix-build timing
-    ROS_INFO_STREAM("[Timing][Build] triplet=" << t_triplet
-        << ", factor=" << t_factor
-        << ", Tc=" << t_Tc
-        << ", normal_triplet=" << t_normal_triplet
-        << ", normal_set=" << t_normal_set
-        << ", solve_px=" << t_solve_px
-        << ", solve_py=" << t_solve_py
-        << ", curv=" << t_curv
-        << ", energy=" << t_energy
-        << ", H/f=" << t_H
-        << ", constraints=" << t_constraints);
+    // ROS_INFO_STREAM("[Timing][Build] triplet=" << t_triplet
+    //     << ", factor=" << t_factor
+    //     << ", Tc=" << t_Tc
+    //     << ", normal_triplet=" << t_normal_triplet
+    //     << ", normal_set=" << t_normal_set
+    //     << ", solve_px=" << t_solve_px
+    //     << ", solve_py=" << t_solve_py
+    //     << ", curv=" << t_curv
+    //     << ", energy=" << t_energy
+    //     << ", H/f=" << t_H
+    //     << ", constraints=" << t_constraints);
 
     accum_stage(wall_time_matrix_build);
 
@@ -1090,13 +1150,13 @@ std::pair<Eigen::VectorXd, int> getAlphaMinCurvature(const std::vector<Eigen::Ve
     double total = (ros::WallTime::now() - wall_getalpha_start).toSec();
     double accounted = wall_time_matrix_build + wall_time_csc + wall_time_setup + wall_time_solve + wall_time_cleanup;
     double other = total - accounted;
-    ROS_INFO_STREAM("[Timing][OSQP] total=" << total
-                    << " | matrix_build=" << wall_time_matrix_build
-                    << ", csc=" << wall_time_csc
-                    << ", setup=" << wall_time_setup
-                    << ", solve=" << wall_time_solve
-                    << ", cleanup=" << wall_time_cleanup
-                    << ", other=" << other);
+    // ROS_INFO_STREAM("[Timing][OSQP] total=" << total
+    //                 << " | matrix_build=" << wall_time_matrix_build
+    //                 << ", csc=" << wall_time_csc
+    //                 << ", setup=" << wall_time_setup
+    //                 << ", solve=" << wall_time_solve
+    //                 << ", cleanup=" << wall_time_cleanup
+    //                 << ", other=" << other);
 
     return std::make_pair(solution, success);
 }

@@ -22,7 +22,7 @@ namespace Constant {
     constexpr double CURVATURE_BOUND_MAX = 1.5 * MAP_RESOLUTION;
     constexpr double CURVATURE_BOUND_MIN = 0.5 * MAP_RESOLUTION;
     constexpr double CURVATURE_BOUND_DECAY = 0.6;
-    constexpr unsigned int MAX_OPT_ITER = 10;
+    constexpr unsigned int MAX_OPT_ITER = 15;
     constexpr unsigned int MAX_OPT_ITER_REPLAN = 3;
     // 0, 1e-8
     constexpr double GAMMA = 0.1; 
