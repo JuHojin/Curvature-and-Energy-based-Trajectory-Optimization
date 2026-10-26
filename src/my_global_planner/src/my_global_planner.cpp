@@ -69,6 +69,7 @@ void MyGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* cos
     curvature_sums_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_sums", 1);
     curvature_peaks_publisher = private_nh.advertise<std_msgs::Float64MultiArray>("curvature_peaks", 1);
     index_publisher = private_nh.advertise<std_msgs::Int32>("index", 1);
+    opt_path_size_publisher = private_nh.advertise<std_msgs::Int32>("opt_path_size", 1);
     private_nh.param("enable_bspline_smoothing", enable_bspline_smoothing_, true);
 
     // Subscriber
@@ -768,6 +769,12 @@ void publishCurvaturePeaks(const ros::Publisher& publisher, const std::vector<do
         curvature_peaks_msg.data.push_back(peak);
     }
     publisher.publish(curvature_peaks_msg);
+}
+
+void publishPathSize(const ros::Publisher& publisher, int path_size) {
+    std_msgs::Int32 path_size_msg;
+    path_size_msg.data = path_size;
+    publisher.publish(path_size_msg);
 }
 
 // ========================================

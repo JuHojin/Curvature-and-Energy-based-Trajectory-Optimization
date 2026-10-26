@@ -28,6 +28,7 @@ ros::Publisher travel_time_publisher;
 ros::Publisher curvature_sums_publisher;
 ros::Publisher curvature_peaks_publisher;
 ros::Publisher index_publisher;
+ros::Publisher opt_path_size_publisher;
 
 // Use EPSILON to treat very small changes in travel_time as no change,
 double EPSILON = 1e-6;
@@ -263,21 +264,21 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
         travel_times.push_back(travel_time);
 
         // Compare current travel time with previous iteration
-        // if (i >= 3 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
-        //     ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
-        //     // Revert to the previous path
-        //     new_path = path; 
-        //     // Revert to the previous boundaries
-        //     std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
-        //     std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
-        //     nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
-        //     nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
-        //     publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
-        //     publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
+        if (i >= 3 && (travel_time > travel_times[i - 1] || std::isnan(travel_time))) {
+            ROS_INFO("Travel time increased. Reverting to path at step [%d]", i);
+            // Revert to the previous path
+            new_path = path; 
+            // Revert to the previous boundaries
+            std::vector<geometry_msgs::PoseStamped> left_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.left_bnd.points);
+            std::vector<geometry_msgs::PoseStamped> right_bnd_prev = convertVector2dToPoseStamped(prev_boundaries.right_bnd.points);
+            nav_msgs::Path left_bnd_prev_world = producePathMapToWorld(left_bnd_prev);
+            nav_msgs::Path right_bnd_prev_world = producePathMapToWorld(right_bnd_prev);
+            publishPath(plan_publisher_bnd_L, left_bnd_prev_world);
+            publishPath(plan_publisher_bnd_R, right_bnd_prev_world);
 
-        //     success_flag = true;
-        //     break;
-        // }
+            success_flag = true;
+            break;
+        }
     }
 
     ros::WallTime wall_qp_end = ros::WallTime::now();
@@ -308,7 +309,9 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     publishTravelTimes(travel_time_publisher, travel_times);
     publishCurvatureSums(curvature_sums_publisher, curvature_sums);
     publishCurvaturePeaks(curvature_peaks_publisher, curvature_peaks);
-
+    publishPathSize(opt_path_size_publisher, static_cast<int>(new_path.size()));
+    ROS_INFO("QP final path size: %zu", new_path.size());
+    
     ROS_INFO("============= QP optimization End =============");
     // the return path is adaptive spaced path
     return new_path;
@@ -442,8 +445,8 @@ Boundaries getBoundaries(const std::vector<Eigen::Vector2d>& path, const std::ve
     constrainDeviationToPreventCrossing(path, inverted_normal_vectors, boundaries.right_bnd.distances);
 
     // Constrain the deviation change
-    // constrainDeviationChange(boundaries.left_bnd.distances);
-    // constrainDeviationChange(boundaries.right_bnd.distances);
+    constrainDeviationChange(boundaries.left_bnd.distances);
+    constrainDeviationChange(boundaries.right_bnd.distances);
 
     // Create boundary points to publish
     for (size_t i = 0; i < n; ++i) {

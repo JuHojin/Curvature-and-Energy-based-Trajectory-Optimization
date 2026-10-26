@@ -7,7 +7,7 @@ import os
 from gazebo_msgs.srv import SetModelState, SetModelStateRequest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
-from std_msgs.msg import Float64, Bool
+from std_msgs.msg import Float64, Bool, Int32
 from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,9 +15,11 @@ PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 DEFAULT_POINTS_FILE = os.path.join(PARENT_DIR, 'data', 'start_goal_pair.csv')
 DEFAULT_CALCULATION_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'calculation_time.csv')
 DEFAULT_OPT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'opt_success.csv')
+DEFAULT_OPT_PATH_SIZE_FILE = os.path.join(PARENT_DIR, 'data', 'opt_path_size.csv')
 POINTS_FILE = DEFAULT_POINTS_FILE
 CALCULATION_TIME_FILE = DEFAULT_CALCULATION_TIME_FILE
 OPT_SUCCESS_FILE = DEFAULT_OPT_SUCCESS_FILE
+OPT_PATH_SIZE_FILE = DEFAULT_OPT_PATH_SIZE_FILE
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 START_EPSILON = 0.1
 PLAN_TIMEOUT_SEC = 30.0
@@ -27,6 +29,7 @@ plan_received = False
 latest_plan_goal = None
 planning_calculation_time = float('nan')
 optimization_success = False
+opt_path_size = None
 
 
 def amcl_pose_callback(msg):
@@ -52,6 +55,11 @@ def optimization_status_callback(msg):
     optimization_success = msg.data
 
 
+def opt_path_size_callback(msg):
+    global opt_path_size
+    opt_path_size = msg.data
+
+
 def call_reset_racecar_service(x, y):
     rospy.wait_for_service('/reset_racecar_pose')
     try:
@@ -59,8 +67,8 @@ def call_reset_racecar_service(x, y):
 
         request = SetModelStateRequest()
         request.model_state.model_name = 'car_1'
-        request.model_state.pose.position.x = x
-        request.model_state.pose.position.y = y
+        request.model_state.pose.position.x = x + 2.5
+        request.model_state.pose.position.y = y + 2.5
         request.model_state.pose.position.z = 0.001
         request.model_state.pose.orientation.w = 1.0
 
@@ -228,10 +236,12 @@ def save_data_to_csv(filename, path_planner, data_list):
     df.to_csv(filename, index=False)
 
 
-def save_iteration_data(path_planner, calculation_time_list, optimization_success_list=None):
+def save_iteration_data(path_planner, calculation_time_list, optimization_success_list=None, path_size_list=None):
     save_data_to_csv(CALCULATION_TIME_FILE, path_planner, calculation_time_list)
     if path_planner.startswith('QP') and optimization_success_list is not None:
         save_data_to_csv(OPT_SUCCESS_FILE, path_planner, optimization_success_list)
+    if path_size_list is not None:
+        save_data_to_csv(OPT_PATH_SIZE_FILE, path_planner, path_size_list)
     rospy.loginfo("Calculation-time data saved")
 
 
@@ -247,7 +257,7 @@ def wait_for_amcl(start_x, start_y):
 
 
 def main():
-    global POINTS_FILE, CALCULATION_TIME_FILE, OPT_SUCCESS_FILE
+    global POINTS_FILE, CALCULATION_TIME_FILE, OPT_SUCCESS_FILE, OPT_PATH_SIZE_FILE
 
     rospy.init_node('monte_carlo_time_runner', anonymous=True)
 
@@ -260,6 +270,7 @@ def main():
     POINTS_FILE = rospy.get_param('~points_file', dataset_file('start_goal_pair', DEFAULT_POINTS_FILE))
     CALCULATION_TIME_FILE = rospy.get_param('~calculation_time_file', dataset_file('calculation_time', DEFAULT_CALCULATION_TIME_FILE))
     OPT_SUCCESS_FILE = rospy.get_param('~opt_success_file', dataset_file('opt_success', DEFAULT_OPT_SUCCESS_FILE))
+    OPT_PATH_SIZE_FILE = rospy.get_param('~opt_path_size_file', dataset_file('opt_path_size', DEFAULT_OPT_PATH_SIZE_FILE))
 
     constants = parse_constants_from_h_file(CONSTANT_FILE)
     if constants is None:
@@ -273,6 +284,7 @@ def main():
 
     calculation_time_list = load_existing_data(CALCULATION_TIME_FILE, path_planner)
     optimization_success_list = load_existing_data(OPT_SUCCESS_FILE, path_planner) if path_planner.startswith('QP') else []
+    opt_path_size_list = load_existing_data(OPT_PATH_SIZE_FILE, path_planner)
 
     if path_planner.startswith('QP'):
         min_length = min(
@@ -285,11 +297,13 @@ def main():
     resume_idx = max(0, min_length)
     calculation_time_list = calculation_time_list[:resume_idx]
     optimization_success_list = optimization_success_list[:resume_idx]
+    opt_path_size_list = opt_path_size_list[:resume_idx]
     rospy.loginfo("Resuming Monte Carlo time-only run from index %d", resume_idx)
 
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, amcl_pose_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/plan/latest', Path, latest_plan_callback, queue_size=1)
     rospy.Subscriber('/move_base/MyGlobalPlanner/planning_calculation_time', Float64, planning_calculation_time_callback, queue_size=1)
+    rospy.Subscriber('/move_base/MyGlobalPlanner/opt_path_size', Int32, opt_path_size_callback, queue_size=1)
     if path_planner.startswith('QP'):
         rospy.Subscriber('/move_base/MyGlobalPlanner/optimization_status', Bool, optimization_status_callback, queue_size=1)
 
@@ -309,6 +323,7 @@ def main():
     global plan_received
     global latest_plan_goal
     global planning_calculation_time
+    global opt_path_size
 
     for i in range(resume_idx, len(start_points)):
         rospy.loginfo("================================================")
@@ -332,6 +347,7 @@ def main():
         plan_received = False
         latest_plan_goal = None
         planning_calculation_time = float('nan')
+        opt_path_size = None
 
         publish_goal(goal_x, goal_y)
         rospy.sleep(1.0)
@@ -360,13 +376,16 @@ def main():
             if path_planner.startswith('QP'):
                 optimization_success_list.append(optimization_success)
                 rospy.loginfo("Optimization Success: %s", optimization_success)
+            opt_path_size_list.append(opt_path_size if opt_path_size is not None else float('nan'))
+            rospy.loginfo("Opt Path Size: %s", opt_path_size if opt_path_size is not None else "nan")
         else:
             calculation_time_list.append(float('nan'))
             if path_planner.startswith('QP'):
                 optimization_success_list.append(False)
+            opt_path_size_list.append(float('nan'))
 
         rospy.sleep(1.5)
-        save_iteration_data(path_planner, calculation_time_list, optimization_success_list)
+        save_iteration_data(path_planner, calculation_time_list, optimization_success_list, opt_path_size_list)
 
     rospy.loginfo("Monte Carlo time-only run completed")
 

@@ -1,7 +1,7 @@
 <launch>
     <!-- path_planner: Default, B_spline, QP (Default: A*)-->
     <arg name="path_planner" default="QP"/>
-    <arg name="dataset" default="full"/>
+    <arg name="dataset" default="small"/>
     
     <!-- QP type: uniform: 0, adaptive: 1 -->
     <rosparam param="move_base/QP_type"> 1 </rosparam>

@@ -40,6 +40,7 @@ extern ros::Publisher travel_time_publisher;
 extern ros::Publisher curvature_sums_publisher;
 extern ros::Publisher curvature_peaks_publisher;
 extern ros::Publisher index_publisher;
+extern ros::Publisher opt_path_size_publisher;
 
 
 void publishPath(const ros::Publisher& publisher, nav_msgs::Path& path_msg);
@@ -49,6 +50,7 @@ void publishCurvature(const ros::Publisher& publisher, const Eigen::VectorXd& cu
 void publishTravelTimes(const ros::Publisher& publisher, const std::vector<double>& travel_times);
 void publishCurvatureSums(const ros::Publisher& publisher, const std::vector<double>& curvature_sums);
 void publishCurvaturePeaks(const ros::Publisher& publisher, const std::vector<double>& curvature_peaks);
+void publishPathSize(const ros::Publisher& publisher, int path_size);
 
 std::pair<std::vector<int>, geometry_msgs::PoseArray> pin_point_select(const std::vector<Eigen::Vector2d>& path);
 std::pair<geometry_msgs::PoseArray, std::vector<int>> updatePinPoints(const geometry_msgs::PoseArray& opt_pin_point_list, const std::vector<geometry_msgs::PoseStamped>& final_plan);
