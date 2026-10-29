@@ -9,7 +9,8 @@ Trajectory planning that minimizes path curvature and energy (path length) in un
 
 | Branch | Description |
 |---|---|
-| `exp_small_map` (default) | Code used for the paper experiments (2025-12-20 ~ 2025-12-21): computation-time optimized QP planner, small dataset setup (441 start/goal pairs in the `simulation` map), and wall-clock measurement of the planning time. |
+| `paper` (default) | Code used for the paper experiments (2025-12-20 ~ 2025-12-21): computation-time optimized QP planner, small dataset setup (441 start/goal pairs in the `simulation` map), and wall-clock measurement of the planning time. |
+| `exp_small_map` | Development branch for the small map experiments. |
 | `main` | Early version, before the computation-time optimization (planning took over 1 s). |
 
 With the computation-time optimization, the average planning time on the small dataset is about **35 ms** on an i7-14700K.
