@@ -3,9 +3,7 @@
 #include <ros/param.h>
 #include <Eigen/Sparse>
 #include <cmath>
-#include <iostream>
 #include <limits>
-#include <algorithm>
 #include <tf/tf.h>
 #include <numeric>
 #include <std_msgs/Bool.h>
@@ -28,7 +26,6 @@ ros::Publisher travel_time_publisher;
 ros::Publisher curvature_sums_publisher;
 ros::Publisher curvature_peaks_publisher;
 ros::Publisher index_publisher;
-ros::Publisher opt_path_size_publisher;
 
 // Use EPSILON to treat very small changes in travel_time as no change,
 double EPSILON = 1e-6;
@@ -239,10 +236,6 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
 
         // Get curvature and velocity profile
         ros::WallTime curvature_stage_start = ros::WallTime::now();
-        double path_length = getPathLength(new_path_m);
-        double path_energy = getPathEnergy(new_path_m);
-        ROS_INFO("Opt. Step [%d] | Path Length: %f", i + 1, path_length);
-        ROS_INFO("Opt. Step [%d] | Path Energy: %f", i + 1, path_energy);
         Eigen::VectorXd curvature = getCurvatureUsingFiniteDifference(new_path_m);
         auto velocity_result = getVelocityProfile(new_path_m, curvature, Constant::INIT_VELOCITY, Constant::MAX_VEL, Constant::MAX_AX, Constant::MAX_AY);
         wall_time_curvature += (ros::WallTime::now() - curvature_stage_start).toSec();
@@ -309,9 +302,7 @@ std::vector<Eigen::Vector2d> optimize_min_curvature(std::vector<Eigen::Vector2d>
     publishTravelTimes(travel_time_publisher, travel_times);
     publishCurvatureSums(curvature_sums_publisher, curvature_sums);
     publishCurvaturePeaks(curvature_peaks_publisher, curvature_peaks);
-    publishPathSize(opt_path_size_publisher, static_cast<int>(new_path.size()));
-    ROS_INFO("QP final path size: %zu", new_path.size());
-    
+
     ROS_INFO("============= QP optimization End =============");
     // the return path is adaptive spaced path
     return new_path;

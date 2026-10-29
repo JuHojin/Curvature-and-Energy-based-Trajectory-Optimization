@@ -13,12 +13,18 @@ from actionlib_msgs.msg import GoalID
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
-POINTS_FILE = os.path.join(PARENT_DIR, 'data', 'start_goal_pair.csv')
-TRAVEL_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'travel_time.csv')
-OPT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'opt_success.csv')
-SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'success.csv')
-CURVATURE_PEAK_FILE = os.path.join(PARENT_DIR, 'data', 'curvature_peak.csv')
-CALCULATION_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'calculation_time.csv')
+DEFAULT_POINTS_FILE = os.path.join(PARENT_DIR, 'data', 'start_goal_pair.csv')
+DEFAULT_TRAVEL_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'travel_time.csv')
+DEFAULT_OPT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'opt_success.csv')
+DEFAULT_SUCCESS_FILE = os.path.join(PARENT_DIR, 'data', 'success.csv')
+DEFAULT_CURVATURE_PEAK_FILE = os.path.join(PARENT_DIR, 'data', 'curvature_peak.csv')
+DEFAULT_CALCULATION_TIME_FILE = os.path.join(PARENT_DIR, 'data', 'calculation_time.csv')
+POINTS_FILE = DEFAULT_POINTS_FILE
+TRAVEL_TIME_FILE = DEFAULT_TRAVEL_TIME_FILE
+OPT_SUCCESS_FILE = DEFAULT_OPT_SUCCESS_FILE
+SUCCESS_FILE = DEFAULT_SUCCESS_FILE
+CURVATURE_PEAK_FILE = DEFAULT_CURVATURE_PEAK_FILE
+CALCULATION_TIME_FILE = DEFAULT_CALCULATION_TIME_FILE
 CONSTANT_FILE = os.path.join(SCRIPT_DIR, '../../my_global_planner/include/constant.h')
 START_EPSILON = 0.1
 
@@ -69,8 +75,8 @@ def call_reset_racecar_service(x, y):
 
         request = SetModelStateRequest()
         request.model_state.model_name = 'car_1'
-        request.model_state.pose.position.x = x
-        request.model_state.pose.position.y = y
+        request.model_state.pose.position.x = x + 2.5
+        request.model_state.pose.position.y = y + 2.5
         request.model_state.pose.position.z = 0.001
         request.model_state.pose.orientation.w = 1.0
 

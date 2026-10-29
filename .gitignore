@@ -9,5 +9,6 @@ src/.rosinstall.bak
 src/Assignment/
 src/f1tenth-sim/rviz/
 src/my_global_planner/data/
-src/f1tenth-sim/data/
+src/f1tenth-sim/data/*
+!src/f1tenth-sim/data/start_goal_pair_small.csv
 .catkin_workspace

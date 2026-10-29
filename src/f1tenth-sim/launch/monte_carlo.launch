@@ -2,6 +2,8 @@
     <!-- path_planner: Default, B_spline, QP (Default: A*)-->
     <arg name="path_planner" default="QP"/>
     <arg name="dataset" default="small"/>
+    <!-- time_only: true measures planning calculation time only (no driving) -->
+    <arg name="time_only" default="false"/>
     
     <!-- QP type: uniform: 0, adaptive: 1 -->
     <rosparam param="move_base/QP_type"> 1 </rosparam>
@@ -15,7 +17,12 @@
     <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/spline_degree" value="3"/>      <!-- spline degree -->
     <param if="$(eval arg('path_planner') == 'B_spline')" name="/bspline_smoothing_service/num_splice_points" value="10"/>  <!-- number of splice points -->
 
-    <node pkg="f1tenth-sim" type="monte_carlo_time_only.py" name="monte_carlo_runner" output="screen">
+    <node unless="$(arg time_only)" pkg="f1tenth-sim" type="monte_carlo_runner.py" name="monte_carlo_runner" output="screen">
+        <param name="path_planner" value="$(arg path_planner)"/>
+        <param name="dataset" value="$(arg dataset)"/>
+    </node>
+
+    <node if="$(arg time_only)" pkg="f1tenth-sim" type="monte_carlo_time_only.py" name="monte_carlo_runner" output="screen">
         <param name="path_planner" value="$(arg path_planner)"/>
         <param name="dataset" value="$(arg dataset)"/>
     </node>

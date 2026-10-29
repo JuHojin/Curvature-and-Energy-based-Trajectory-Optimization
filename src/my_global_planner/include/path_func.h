@@ -22,8 +22,6 @@ Eigen::VectorXd getCurvatureUsingTurningRadius(const nav_msgs::Path& path);
 Eigen::VectorXd getCurvatureUsingTurningRadius(const std::vector<geometry_msgs::PoseStamped>& plan);
 Eigen::VectorXd getCurvatureUsingFiniteDifference(const std::vector<Eigen::Vector2d>& path);
 Eigen::VectorXd getCurvatureUsingFiniteDifference(const nav_msgs::Path& path_msg);
-double getPathEnergy(const std::vector<Eigen::Vector2d>& path);
-double getPathLength(const std::vector<Eigen::Vector2d>& path);
 
 // Post Smoothing
 std::vector<geometry_msgs::PoseStamped> postSmooth(std::vector<geometry_msgs::PoseStamped>& plan);
